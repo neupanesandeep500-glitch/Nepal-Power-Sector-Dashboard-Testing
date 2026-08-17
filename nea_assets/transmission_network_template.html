@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nepal Transmission Network</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="/nea-vendor/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0f1a; --panel:#101726; --panel-2:#141d30; --panel-3:#1b2740;
+    --hairline:#22304a; --text:#e7edf7; --text-dim:#aab6cc; --text-faint:#7d8bab;
+    --accent:#3FC7C0; --accent-2:#4f8ef7;
+    --font-body:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);}
+  .tn-wrap{padding:12px;}
+  .tn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px;}
+  .tn-kpi{background:var(--panel);border:1px solid var(--hairline);border-radius:10px;padding:12px 14px;}
+  .tn-kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);font-weight:700;}
+  .tn-kpi .value{font-size:20px;font-weight:800;color:#fff;margin-top:3px;}
+  .tn-kpi .value small{font-size:12px;color:var(--text-dim);font-weight:600;}
+
+  .tn-layout{display:grid;grid-template-columns:270px 1fr;gap:12px;}
+  @media (max-width:900px){ .tn-layout{grid-template-columns:1fr;} }
+
+  .tn-sidebar{background:var(--panel);border:1px solid var(--hairline);border-radius:10px;padding:14px;height:fit-content;}
+  .tn-sidebar h4{margin:0 0 10px;font-size:13px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;}
+  .tn-field{margin-bottom:12px;}
+  .tn-field label{display:block;font-size:11px;color:var(--text-faint);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .tn-field input[type=text],.tn-field select{
+    width:100%;background:var(--panel-3);border:1px solid var(--hairline);border-radius:6px;
+    color:var(--text);padding:7px 9px;font-size:13px;
+  }
+  .tn-chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .tn-chip{
+    cursor:pointer;font-size:12px;font-weight:600;padding:5px 10px;border-radius:20px;
+    border:1px solid var(--hairline);background:var(--panel-3);color:var(--text-dim);
+    transition:all .12s ease;user-select:none;
+  }
+  .tn-chip.active{color:#0a0f1a;font-weight:800;border-color:transparent;}
+  .tn-legend{font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.7;}
+  .tn-legend .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;}
+
+  #tn-map{width:100%;height:640px;border-radius:10px;border:1px solid var(--hairline);background:#0c1220;}
+  .leaflet-container{background:#0c1220;font-family:var(--font-body);}
+  .leaflet-popup-content-wrapper{background:var(--panel-2);color:var(--text);border-radius:8px;}
+  .leaflet-popup-tip{background:var(--panel-2);}
+  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--hairline)!important;}
+  .leaflet-control-attribution{background:rgba(10,15,26,.7)!important;color:var(--text-faint)!important;font-size:10px;}
+
+  .tn-section{background:var(--panel);border:1px solid var(--hairline);border-radius:10px;padding:14px 16px;margin-top:14px;}
+  .tn-section h3{margin:0 0 10px;font-size:14px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px;}
+  .tn-section h3 .sub{font-size:11px;font-weight:600;color:var(--text-faint);}
+  .tn-toggle-row{display:flex;gap:6px;margin-bottom:10px;}
+  .tn-toggle-row button{
+    cursor:pointer;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;
+    border:1px solid var(--hairline);background:var(--panel-3);color:var(--text-dim);
+  }
+  .tn-toggle-row button.active{background:var(--accent);color:#04211f;border-color:var(--accent);}
+  .tn-chart-box{position:relative;height:340px;}
+
+  .tn-empty{padding:40px 20px;text-align:center;color:var(--text-faint);}
+  .tn-footnote{font-size:11px;color:var(--text-faint);margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="tn-wrap">
+
+  <div class="tn-kpis" id="tn-kpis"></div>
+
+  <div class="tn-layout">
+    <div class="tn-sidebar">
+      <h4>🔎 Filters</h4>
+      <div class="tn-field">
+        <label>Search</label>
+        <input type="text" id="tn-search" placeholder="Substation, line, district…">
+      </div>
+      <div class="tn-field">
+        <label>Stage</label>
+        <div class="tn-chip-row" id="tn-stage-chips"></div>
+      </div>
+      <div class="tn-field">
+        <label>Voltage</label>
+        <div class="tn-chip-row" id="tn-voltage-chips"></div>
+      </div>
+      <div class="tn-field">
+        <label>Province</label>
+        <select id="tn-province-select"><option value="">All provinces</option></select>
+      </div>
+      <div class="tn-legend" id="tn-legend"></div>
+    </div>
+
+    <div>
+      <div id="tn-map"></div>
+      <div class="tn-footnote">
+        Lines are drawn as straight segments between their From/To substations (the editable
+        workbook doesn't carry the original surveyed route geometry) — route shape is
+        indicative, not a surveyed alignment. Length (km) shown in the panel is still the
+        surveyed figure.
+      </div>
+    </div>
+  </div>
+
+  <div class="tn-section">
+    <h3>📊 Line Distribution <span class="sub">stacked by Stage</span></h3>
+    <div class="tn-toggle-row">
+      <button type="button" class="tn-slice-btn active" data-slice="by_voltage">By Voltage</button>
+      <button type="button" class="tn-slice-btn" data-slice="by_province">By Province</button>
+      <button type="button" class="tn-metric-btn active" data-metric="count">Count</button>
+      <button type="button" class="tn-metric-btn" data-metric="km">Route km</button>
+    </div>
+    <div class="tn-chart-box"><canvas id="tn-dist-chart"></canvas></div>
+  </div>
+
+</div>
+
+<script>
+const TN_DATA = __TN_DATA_JSON__;
+
+(function(){
+  const subs = TN_DATA.substations || [];
+  const lines = TN_DATA.lines || [];
+  const stats = TN_DATA.stats || {};
+  const stageColors = TN_DATA.stage_colors || {};
+  const voltColors = TN_DATA.voltage_colors || {};
+
+  if (!subs.length && !lines.length) {
+    document.querySelector('.tn-layout').innerHTML =
+      '<div class="tn-empty" style="grid-column:1/-1;">No transmission network data loaded yet. ' +
+      'An administrator can upload the workbook at <b>/admin</b>.</div>';
+    document.querySelector('.tn-section').style.display = 'none';
+    document.getElementById('tn-kpis').style.display = 'none';
+  }
+
+  // ── KPI strip ──────────────────────────────────────────────
+  const kpi = stats.kpi || {};
+  const kpiDefs = [
+    ['Substations', kpi.total_substations || 0, ''],
+    ['Transmission Lines', kpi.total_lines || 0, ''],
+    ['Total Route Length', (kpi.total_km || 0).toLocaleString(undefined,{maximumFractionDigits:0}), 'km'],
+    ['Unresolved Lines', kpi.unresolved_lines || 0, 'no From/To match'],
+  ];
+  document.getElementById('tn-kpis').innerHTML = kpiDefs.map(function(d){
+    return '<div class="tn-kpi"><div class="label">'+d[0]+'</div>' +
+           '<div class="value">'+d[1]+' <small>'+d[2]+'</small></div></div>';
+  }).join('');
+
+  // ── Filter state ───────────────────────────────────────────
+  const stages = (stats.stages && stats.stages.length) ? stats.stages : ['Existing','Under Construction','Future','Proposed'];
+  const voltages = Array.from(new Set(lines.map(l => l.voltage_kv).filter(Boolean))).sort((a,b)=>a-b);
+  const provinces = Array.from(new Set(subs.map(s => s.province).filter(Boolean))).sort();
+
+  const state = { stage: new Set(stages), voltage: new Set(voltages), province: '', q: '' };
+
+  function chipsHtml(items, colorMap, groupId) {
+    return items.map(function(v){
+      const color = colorMap[v] || colorMap[String(v)] || '#4f8ef7';
+      return '<span class="tn-chip active" data-group="'+groupId+'" data-value="'+v+'" ' +
+             'style="border-color:'+color+';color:'+color+';" data-color="'+color+'">' +
+             (groupId==='voltage' ? v+' kV' : v) + '</span>';
+    }).join('');
+  }
+  document.getElementById('tn-stage-chips').innerHTML = chipsHtml(stages, stageColors, 'stage');
+  document.getElementById('tn-voltage-chips').innerHTML = chipsHtml(voltages, voltColors, 'voltage');
+
+  document.querySelectorAll('.tn-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      const group = chip.dataset.group, val = group === 'voltage' ? Number(chip.dataset.value) : chip.dataset.value;
+      const set = group === 'voltage' ? state.voltage : state.stage;
+      if (set.has(val)) { set.delete(val); chip.classList.remove('active'); chip.style.background = 'transparent'; chip.style.color = 'var(--text-faint)'; chip.style.borderColor='var(--hairline)'; }
+      else { set.add(val); chip.classList.add('active'); chip.style.background = chip.dataset.color; chip.style.color = '#04121a'; chip.style.borderColor = chip.dataset.color; }
+      renderMap();
+    });
+    // initial active styling
+    chip.style.background = chip.dataset.color;
+    chip.style.color = '#04121a';
+  });
+
+  const provSelect = document.getElementById('tn-province-select');
+  provinces.forEach(function(p){
+    const opt = document.createElement('option'); opt.value = p; opt.textContent = p;
+    provSelect.appendChild(opt);
+  });
+  provSelect.addEventListener('change', function(){ state.province = provSelect.value; renderMap(); });
+  document.getElementById('tn-search').addEventListener('input', function(e){ state.q = e.target.value.trim().toLowerCase(); renderMap(); });
+
+  document.getElementById('tn-legend').innerHTML = stages.map(function(s){
+    const c = stageColors[s] || '#4f8ef7';
+    return '<div><span class="dot" style="background:'+c+';"></span>'+s+'</div>';
+  }).join('');
+
+  // ── Map ────────────────────────────────────────────────────
+  const map = L.map('tn-map', { zoomControl: true }).setView([28.3, 84.1], 7);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
+  }).addTo(map);
+
+  const subLayer = L.layerGroup().addTo(map);
+  const lineLayer = L.layerGroup().addTo(map);
+
+  function subMatches(s) {
+    if (!state.stage.has(s.stage)) return false;
+    if (state.province && s.province !== state.province) return false;
+    if (state.q && !((s.name||'').toLowerCase().includes(state.q) || (s.district||'').toLowerCase().includes(state.q))) return false;
+    return true;
+  }
+  function lineMatches(l) {
+    if (!state.stage.has(l.stage)) return false;
+    if (l.voltage_kv && !state.voltage.has(l.voltage_kv)) return false;
+    if (state.province && !(l.provinces||[]).includes(state.province)) return false;
+    if (state.q) {
+      const hay = ((l.label||'')+' '+(l.from||'')+' '+(l.to||'')+' '+(l.districts||[]).join(' ')).toLowerCase();
+      if (!hay.includes(state.q)) return false;
+    }
+    return true;
+  }
+
+  function renderMap() {
+    subLayer.clearLayers();
+    lineLayer.clearLayers();
+
+    lines.filter(lineMatches).forEach(function(l){
+      if (!l.coords) return;
+      const color = stageColors[l.stage] || voltColors[String(l.voltage_kv)] || '#4f8ef7';
+      const weight = l.voltage_kv >= 400 ? 4 : (l.voltage_kv >= 220 ? 3 : 2);
+      const dash = (l.stage === 'Under Construction' || l.stage === 'Future' || l.stage === 'Proposed') ? '6 5' : null;
+      const poly = L.polyline(l.coords, { color: color, weight: weight, opacity: 0.85, dashArray: dash });
+      poly.bindPopup(
+        '<b>' + (l.label || l.id) + '</b><br>' +
+        (l.voltage_kv ? l.voltage_kv + ' kV &middot; ' : '') + (l.stage || '') + '<br>' +
+        (l.length_km ? l.length_km + ' km' : '') +
+        (l.expected_completion ? '<br>Expected: ' + l.expected_completion : '') +
+        (l.classification ? '<br>' + l.classification : '')
+      );
+      lineLayer.addLayer(poly);
+    });
+
+    subs.filter(subMatches).forEach(function(s){
+      if (s.lat == null || s.lon == null) return;
+      const color = stageColors[s.stage] || '#4f8ef7';
+      const marker = L.circleMarker([s.lat, s.lon], {
+        radius: 5, color: '#0a0f1a', weight: 1, fillColor: color, fillOpacity: 0.95,
+      });
+      marker.bindPopup(
+        '<b>' + s.name + '</b><br>' +
+        (s.voltage_level ? s.voltage_level + ' kV &middot; ' : '') + (s.stage || '') + '<br>' +
+        (s.capacity ? s.capacity + '<br>' : '') +
+        [s.local_body, s.district, s.province].filter(Boolean).join(', ')
+      );
+      subLayer.addLayer(marker);
+    });
+  }
+  renderMap();
+
+  // ── Distribution chart (stacked by Stage) ────────────────────
+  let sliceKey = 'by_voltage', metric = 'count', chart = null;
+
+  function buildChart() {
+    const slice = stats[sliceKey] || { categories: [], stages: [], count: {}, km: {} };
+    const datasets = (slice.stages || []).map(function(stage){
+      return {
+        label: stage,
+        data: (slice[metric] && slice[metric][stage]) || [],
+        backgroundColor: stageColors[stage] || '#4f8ef7',
+        stack: 'stack1',
+        borderRadius: 3,
+      };
+    });
+    const ctx = document.getElementById('tn-dist-chart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: slice.categories || [], datasets: datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 350 },
+        plugins: {
+          legend: { labels: { color: '#e7edf7', font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: '#aab6cc' }, grid: { color: '#22304a' } },
+          y: { stacked: true, ticks: { color: '#aab6cc' }, grid: { color: '#22304a' },
+               title: { display: true, text: metric === 'km' ? 'Route length (km)' : 'Number of lines', color: '#aab6cc' } },
+        },
+      },
+    });
+  }
+  buildChart();
+
+  document.querySelectorAll('.tn-slice-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tn-slice-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      sliceKey = btn.dataset.slice;
+      buildChart();
+    });
+  });
+  document.querySelectorAll('.tn-metric-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tn-metric-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      metric = btn.dataset.metric;
+      buildChart();
+    });
+  });
+})();
+</script>
+</body>
+</html>
