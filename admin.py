@@ -20,6 +20,7 @@ from flask import Blueprint, render_template_string, request, redirect, url_for,
 import server_state as ss
 import data_engine as de
 import NEA
+import transmission_network as tn
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -202,6 +203,39 @@ environment variable, even if you change it on Render, until you clear it below.
 </p>
 <form method="post" action="{{ url_for('admin.clear_nea_sheet_override') }}" style="margin-top:4px;">
 <button type="submit">Clear saved URL (use NEA_SHEET_URL env var instead)</button>
+</form>
+{% endif %}
+</div>
+
+<div class="card">
+<h3>🔌 Transmission Network Data</h3>
+<p style="color:#666; font-size:13px; margin-top:-6px;">
+Feeds the "Transmission Network" map tab (substations + transmission lines and the
+distribution chart) — a SEPARATE dataset from the two above. Re-upload the same
+"Nepal Transmission Network — Editable Data Sheet" workbook (Substations /
+Transmission Lines tabs) any time the network changes; the map and distribution
+chart update immediately, no redeploy needed.
+</p>
+<div class="status-box {% if tn_status.error %}error{% elif not tn_status.last_sync %}warning{% endif %}" style="margin-bottom:12px;">
+<strong>Transmission Network Data Status:</strong> {{ tn_status.source or "No sync yet" }}<br>
+{% if tn_status.last_sync %}<strong>Last Sync:</strong> {{ tn_status.last_sync }}<br>{% endif %}
+{% if tn_status.error %}<strong>Error:</strong> {{ tn_status.error }}{% endif %}
+</div>
+<form method="post" action="{{ url_for('admin.sync_tn_sheet') }}">
+<input type="text" name="tn_sheet_url" placeholder="Transmission Network Google Sheet URL or ID (optional)" value="{{ default_tn_sheet_url }}">
+<button type="submit">Sync from Google Sheet</button>
+</form>
+<form method="post" action="{{ url_for('admin.upload_tn_workbook') }}" enctype="multipart/form-data" style="margin-top:10px;">
+<input type="file" name="tn_workbook" accept=".xlsx,.xls">
+<button type="submit">Upload Transmission Network Workbook</button>
+</form>
+{% if tn_has_override %}
+<p style="color:#666; font-size:12px; margin-top:10px;">
+A URL saved here is currently in use and will keep overriding the <code>TN_SHEET_URL</code>
+environment variable until you clear it below.
+</p>
+<form method="post" action="{{ url_for('admin.clear_tn_sheet_override') }}" style="margin-top:4px;">
+<button type="submit">Clear saved URL</button>
 </form>
 {% endif %}
 </div>
@@ -408,6 +442,7 @@ def index():
     default_pa = os.environ.get("DEFAULT_PA_DRIVE_URL", "")
     status_names = de.STATUS_ORDER + de.EXTRA_STATUS_ORDER
     nea_status = NEA.sync_status()
+    tn_status = tn.sync_status()
     return render_template_string(
         ADMIN_TEMPLATE,
         state=ss.STATE,
@@ -417,6 +452,9 @@ def index():
         nea_status=nea_status,
         default_nea_sheet_url=NEA.current_sheet_url(),
         nea_has_override=NEA.has_persisted_sheet_url(),
+        tn_status=tn_status,
+        default_tn_sheet_url=tn.current_sheet_url(),
+        tn_has_override=tn.has_persisted_sheet_url(),
         marquee_enabled=ss.get_marquee_enabled(),
         cache_bust=int(time.time()),
         has_logo=bool(ss.get_logo_path()),
@@ -527,6 +565,64 @@ def upload_nea_workbook():
         flash(f"NEA workbook '{filename}' loaded successfully!", "success")
     else:
         flash(f"Failed to load NEA workbook: {NEA.sync_status()['error']}", "error")
+
+    return redirect(url_for("admin.index"))
+
+
+@admin_bp.route("/sync-tn-sheet", methods=["POST"])
+@admin_required
+def sync_tn_sheet():
+    """Sync the SEPARATE Transmission Network workbook (substations +
+    transmission lines) — distinct from the license and NEA sheets above."""
+    url = request.form.get("tn_sheet_url", "").strip()
+    if not url:
+        flash("Please provide a Google Sheet URL or ID for the Transmission Network data", "error")
+        return redirect(url_for("admin.index"))
+    try:
+        tn.set_sheet_url(url)
+        status = tn.sync_status()
+        if status["error"]:
+            flash(f"Transmission Network sheet sync failed: {status['error']}", "error")
+        else:
+            flash("Transmission Network data sheet synced successfully!", "success")
+    except Exception as e:
+        flash(f"Transmission Network sync failed: {str(e)}", "error")
+    return redirect(url_for("admin.index"))
+
+
+@admin_bp.route("/clear-tn-sheet-override", methods=["POST"])
+@admin_required
+def clear_tn_sheet_override():
+    try:
+        tn.clear_persisted_sheet_url()
+        status = tn.sync_status()
+        if status["error"]:
+            flash(f"Cleared saved URL, but re-sync failed: {status['error']}", "error")
+        else:
+            flash("Cleared saved URL.", "success")
+    except Exception as e:
+        flash(f"Failed to clear saved Transmission Network sheet URL: {str(e)}", "error")
+    return redirect(url_for("admin.index"))
+
+
+@admin_bp.route("/upload-tn-workbook", methods=["POST"])
+@admin_required
+def upload_tn_workbook():
+    """Manually upload the Transmission Network workbook (.xlsx) — the
+    'previous sheets uploaded in the app' pattern, applied to the map."""
+    if "tn_workbook" not in request.files or request.files["tn_workbook"].filename == "":
+        flash("No file selected for the Transmission Network workbook", "error")
+        return redirect(url_for("admin.index"))
+    file = request.files["tn_workbook"]
+    filename = file.filename
+    os.makedirs(ss.DATA_DIR, exist_ok=True)
+    saved_path = os.path.join(ss.DATA_DIR, "tn_upload_" + filename)
+    file.save(saved_path)
+
+    if tn.load_from_path(saved_path):
+        flash(f"Transmission Network workbook '{filename}' loaded successfully!", "success")
+    else:
+        flash(f"Failed to load Transmission Network workbook: {tn.sync_status()['error']}", "error")
 
     return redirect(url_for("admin.index"))
 
