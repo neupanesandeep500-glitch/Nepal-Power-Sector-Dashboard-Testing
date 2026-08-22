@@ -34,6 +34,7 @@ import base64
 import tempfile
 import traceback
 import textwrap
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -53,6 +54,9 @@ from admin import admin_bp
 import NEA
 import transmission_network as tn_net
 import visitor_counter
+import security
+
+app_logger = logging.getLogger("nepal_power_dashboard")
 
 import matplotlib
 matplotlib.use("Agg")  # headless backend — must be set before pyplot is imported anywhere
@@ -229,6 +233,10 @@ app = dash.Dash(
                 "transmission tracker for Nepal Source:www.doed.gov.np & www.nea.org.np."
             ),
         },
+        {"name": "theme-color", "content": "#0d47a1"},
+        {"name": "color-scheme", "content": "light dark"},
+        {"name": "apple-mobile-web-app-capable", "content": "yes"},
+        {"name": "apple-mobile-web-app-status-bar-style", "content": "black-translucent"},
     ],
 )
 server = app.server
@@ -364,6 +372,76 @@ footer.site-footer a:hover { text-decoration: underline; }
 }
 .nea-subtabs-nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 .nea-subtabs-nav .nea-subtab-btn { cursor: pointer; border: 1px solid transparent; }
+
+/* ── Mobile-friendly main tab bar: horizontal scroll instead of wrap/  ── */
+/* ── overflow-clip on narrow screens, with a subtle fade+scrollbar     ── */
+/* ── hint so it reads as scrollable rather than cut off.               ── */
+@media (max-width: 767px) {
+  .main-tabs-nav { flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 4px; }
+  .main-tabs-nav .nav-link { flex: 0 0 auto; font-size: 12.5px; padding: 8px 12px; }
+  .kpi-flex-row { gap: 6px; }
+}
+.main-tabs-nav::-webkit-scrollbar { height: 5px; }
+.main-tabs-nav::-webkit-scrollbar-thumb { background: rgba(21,101,192,0.35); border-radius: 4px; }
+
+/* ── Theme toggle button ──────────────────────────────────────────────── */
+.theme-toggle-btn { border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08);
+  color: inherit; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  transition: background 0.15s ease, transform 0.12s ease; }
+.theme-toggle-btn:hover { background: rgba(255,255,255,0.18); transform: translateY(-1px); }
+
+/* ── Back-to-top button ───────────────────────────────────────────────── */
+#back-to-top-btn { position: fixed; right: 20px; bottom: 22px; z-index: 1050;
+  width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
+  background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%); color: #fff;
+  font-size: 18px; box-shadow: 0 3px 10px rgba(13,71,161,0.45);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transform: translateY(12px);
+  transition: opacity 0.2s ease, transform 0.2s ease; }
+#back-to-top-btn.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+#back-to-top-btn:hover { filter: brightness(1.1); }
+
+/* ── Custom dash-loading spinner, matched to the site palette ───────────── */
+._dash-loading-callback, .dash-spinner { border-color: #1565c0 !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DARK MODE
+   Applied via [data-theme="dark"] on <html>, toggled client-side and
+   persisted in localStorage (see THEME_JS below). This re-skins the
+   app chrome (page background, cards, sidebar, tables, tabs, footer,
+   admin-adjacent surfaces) using CSS variables layered on top of the
+   FLATLY Bootstrap theme. Plotly figure canvases keep their own
+   white "paper" background by design — full per-chart re-theming
+   would mean touching every chart-builder function's color literals,
+   so charts render as light cards floating on the dark chrome, which
+   is a common and legible pattern rather than a partial/broken dark
+   theme on the plots themselves.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root { --app-bg: #eef1f6; --app-card-bg: #ffffff; --app-text: #1c2230;
+  --app-border: rgba(0,0,0,0.08); --app-muted: #5c6b82; }
+[data-theme="dark"] { --app-bg: #0b1220; --app-card-bg: #141c30; --app-text: #e6ecfa;
+  --app-border: rgba(255,255,255,0.10); --app-muted: #93a2c2; }
+
+[data-theme="dark"] body { background: var(--app-bg); color: var(--app-text); }
+[data-theme="dark"] .card { background: var(--app-card-bg) !important; color: var(--app-text);
+  border-color: var(--app-border) !important; }
+[data-theme="dark"] .card-header { background: rgba(255,255,255,0.04) !important;
+  border-color: var(--app-border) !important; }
+[data-theme="dark"] .table { color: var(--app-text); }
+[data-theme="dark"] .form-control, [data-theme="dark"] .form-select {
+  background: #0f1729; color: var(--app-text); border-color: var(--app-border); }
+[data-theme="dark"] .custom-style-panel { background: #0f1729 !important; }
+[data-theme="dark"] .sub-tabs-nav .nav-link, [data-theme="dark"] .nea-subtabs-nav .nea-subtab-btn {
+  background: #182238; color: var(--app-muted); }
+[data-theme="dark"] .main-tabs-nav .nav-link { background: transparent; color: var(--app-muted); }
+[data-theme="dark"] .main-tabs-nav .nav-link:hover { background: #182238; }
+[data-theme="dark"] .dash-table-container, [data-theme="dark"] .dash-spreadsheet-container {
+  filter: invert(1) hue-rotate(180deg); }
+[data-theme="dark"] .dash-table-container img, [data-theme="dark"] .dash-spreadsheet-container img {
+  filter: invert(1) hue-rotate(180deg); }
+[data-theme="dark"] ::selection { background: #1565c0; color: #fff; }
 """
 CLOCK_JS = """
 <script>
@@ -391,6 +469,59 @@ setInterval(function() {
   var el = document.getElementById('visitor-counter');
   if (el && el.textContent.indexOf('\u2026') !== -1) { _loadVisitorCount(); }
 }, 2000);
+
+// ── Dark mode: apply saved/preferred theme before paint, wire up toggle ──
+(function() {
+  function preferredTheme() {
+    var saved = localStorage.getItem('npd-theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark' : 'light';
+  }
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.querySelectorAll('.theme-toggle-icon').forEach(function(el) {
+      el.textContent = theme === 'dark' ? '☀️' : '🌙';
+    });
+    document.querySelectorAll('.theme-toggle-label').forEach(function(el) {
+      el.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    });
+  }
+  applyTheme(preferredTheme());
+  document.addEventListener('DOMContentLoaded', function() {
+    applyTheme(preferredTheme());
+    document.addEventListener('click', function(ev) {
+      var btn = ev.target.closest('#theme-toggle-btn');
+      if (!btn) return;
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('npd-theme', next);
+      applyTheme(next);
+    });
+  });
+})();
+
+// ── Back-to-top button: fades in after scrolling past one screen height ──
+(function() {
+  function ensureButton() {
+    if (document.getElementById('back-to-top-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'back-to-top-btn';
+    btn.setAttribute('aria-label', 'Back to top');
+    btn.title = 'Back to top';
+    btn.textContent = '↑';
+    btn.onclick = function() { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    document.body.appendChild(btn);
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    ensureButton();
+    window.addEventListener('scroll', function() {
+      var btn = document.getElementById('back-to-top-btn');
+      if (!btn) return;
+      if (window.scrollY > window.innerHeight * 0.6) btn.classList.add('visible');
+      else btn.classList.remove('visible');
+    }, { passive: true });
+  });
+})();
 </script>
 """
 
@@ -406,15 +537,41 @@ GA_SNIPPET = f"""<script async src="https://www.googletagmanager.com/gtag/js?id=
   gtag('config', '{GA_MEASUREMENT_ID}');
 </script>"""
 
+# Sets data-theme on <html> synchronously, before first paint, so
+# dark-mode users don't see a flash of the light theme while the main
+# CLOCK_JS bundle (loaded at the end of <body>) finishes wiring up.
+EARLY_THEME_JS = """<script>
+(function() {
+  try {
+    var saved = localStorage.getItem('npd-theme');
+    var theme = (saved === 'dark' || saved === 'light') ? saved :
+      ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {}
+})();
+</script>"""
+
 app.index_string = f"""<!DOCTYPE html>
 <html><head>{{%metas%}}<title>{{%title%}}</title>{{%favicon%}}{{%css%}}
 <style>{TICKER_CSS}</style>
+{EARLY_THEME_JS}
 {GA_SNIPPET}
 </head>
 <body>{{%app_entry%}}<footer>{{%config%}}{{%scripts%}}{{%renderer%}}</footer>{CLOCK_JS}</body></html>"""
 
 server.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32).hex())
+if not os.environ.get("FLASK_SECRET_KEY"):
+    app_logger.warning(
+        "FLASK_SECRET_KEY is not set — using a random key generated at process "
+        "startup. Every restart (and every worker, if running with >1 gunicorn "
+        "worker) will invalidate existing admin sessions. Set FLASK_SECRET_KEY "
+        "for stable sessions in production."
+    )
 server.register_blueprint(admin_bp)
+
+# Security headers, hardened session cookies, gzip compression (if available),
+# friendly 404/500 pages, and a /healthz endpoint for uptime monitors.
+security.init_app(server, state_getter=lambda: ss.STATE)
 
 # CRITICAL FIX: Bootstrap GIS immediately (bundled data, always works)
 ss.bootstrap_on_startup()
@@ -459,27 +616,36 @@ def serve_nea_vendor(filename):
 def nea_operational_dashboard():
     try:
         return NEA.render_dashboard_html(style=_nea_style_payload())
-    except Exception as e:
-        traceback.print_exc()
-        return f"<pre>NEA dashboard failed to render: {e}</pre>", 500
+    except Exception:
+        app_logger.exception("NEA operational dashboard failed to render")
+        return security.render_friendly_error(
+            "Dashboard temporarily unavailable",
+            "The operational performance dashboard couldn't be rendered right now. "
+            "The issue has been logged — please try again shortly.")
 
 
 @server.route("/nea-forecast-lab")
 def nea_forecast_lab_page():
     try:
         return NEA.render_forecast_lab_html(style=_nea_style_payload())
-    except Exception as e:
-        traceback.print_exc()
-        return f"<pre>NEA forecast lab failed to render: {e}</pre>", 500
+    except Exception:
+        app_logger.exception("NEA forecast lab failed to render")
+        return security.render_friendly_error(
+            "Forecast Lab temporarily unavailable",
+            "The forecast lab couldn't be rendered right now. "
+            "The issue has been logged — please try again shortly.")
 
 
 @server.route("/transmission-network-map")
 def transmission_network_map():
     try:
         return tn_net.render_map_html()
-    except Exception as e:
-        traceback.print_exc()
-        return f"<pre>Transmission Network map failed to render: {e}</pre>", 500
+    except Exception:
+        app_logger.exception("Transmission Network map failed to render")
+        return security.render_friendly_error(
+            "Map temporarily unavailable",
+            "The transmission network map couldn't be rendered right now. "
+            "The issue has been logged — please try again shortly.")
 
 
 @server.route("/api/nea-forecast-params")
@@ -842,9 +1008,16 @@ app.layout = dbc.Container(fluid=True, children=[
                 ]),
             ], className="d-flex align-items-center")),
             dbc.Col(width="auto", children=html.Div([
-                html.Div(className="live-clock-date"),
-                html.Div(className="live-clock-time"),
-            ], className="live-clock-wrap")),
+                html.Button([
+                    html.Span("🌙", className="theme-toggle-icon"),
+                    html.Span("Dark", className="theme-toggle-label"),
+                ], id="theme-toggle-btn", className="theme-toggle-btn me-2",
+                    title="Toggle light / dark theme", type="button"),
+                html.Div([
+                    html.Div(className="live-clock-date"),
+                    html.Div(className="live-clock-time"),
+                ], className="live-clock-wrap"),
+            ], className="d-flex align-items-center")),
         ]),
     ]),
 
