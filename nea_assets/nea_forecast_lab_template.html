@@ -158,7 +158,7 @@
     </div>
     <div class="legend-note" id="legend-single">
       <span class="swatch first" style="background:#1565c0;"></span>History
-      <span class="swatch" style="background:#c62828;"></span>Forecast (solid line)
+      <span class="swatch" style="background:#c62828;"></span>Forecast (connected from base year)
       <span class="band"></span>80% confidence band (shaded area)
     </div>
     <div class="legend-note" id="legend-composite" style="display:none;">
@@ -475,11 +475,14 @@ function singleSeriesChartConfig(
     pastValues.concat(Array(predLabels.length).fill(null));
 
   // IMPORTANT:
-  // The forecast starts at the FIRST FUTURE PERIOD.
-  // We intentionally do NOT insert baseValue into predSeries.
-  // predValues[0] is the genuine model forecast for the first year/month.
+  // predValues[0] is the genuine first future-period model forecast.
+  // For VISUAL CONTINUITY ONLY, the forecast line starts at the last
+  // historical/base-year point and then connects to predValues[0].
+  // baseValue is NOT sent to the backend and does NOT replace predValues[0].
   const predSeries =
-    Array(pastLabels.length).fill(null).concat(predValues);
+    Array(Math.max(0, pastLabels.length - 1)).fill(null)
+      .concat([baseValue])
+      .concat(predValues);
 
   const datasets = [
     {
@@ -505,11 +508,17 @@ function singleSeriesChartConfig(
   ];
 
   if (lo && lo.length && hi && hi.length) {
+    // Same visual bridge for the uncertainty band. The actual forecast
+    // values remain lo[0]/hi[0]; baseValue is only the seam anchor.
     const loSeries =
-      Array(pastLabels.length).fill(null).concat(lo);
+      Array(Math.max(0, pastLabels.length - 1)).fill(null)
+        .concat([baseValue])
+        .concat(lo);
 
     const hiSeries =
-      Array(pastLabels.length).fill(null).concat(hi);
+      Array(Math.max(0, pastLabels.length - 1)).fill(null)
+        .concat([baseValue])
+        .concat(hi);
 
     datasets.push({
       label: "Upper (80% CI)",
