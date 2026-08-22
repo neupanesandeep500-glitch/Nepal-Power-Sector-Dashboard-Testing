@@ -895,42 +895,89 @@ def forecast_result_to_dict(fr: "ForecastResult") -> dict:
 # See the long unit-handling comment in unit_economics() below before
 # trusting any Rs./unit figure derived from these series.
 
+# ══════════════════════════════════════════════════════════════════════
+#  FORECASTING ENGINE
+#  (Linear / Moving Average / Holt / Damped Holt / ARIMA / Theta /
+#   SARIMA / Hybrid / Accuracy-Weighted Ensemble)
+# ══════════════════════════════════════════════════════════════════════
+#
+# IMPORTANT CHANGE:
+# The first forecast period is a genuine model-generated forecast.
+# It is NOT forced to equal the last/base-year observation.
+#
+# Example:
+#   2081 actual/base year = 10,000
+#   2082 forecast         = 10,650  <-- genuine one-step-ahead forecast
+#   2083 forecast         = 11,200
+#
+# The old implementation shifted the entire forecast by:
+#     offset = last_actual - cand_pred[0]
+# This has intentionally been removed. A continuity/join correction must
+# never overwrite the model's first prediction.
+# ══════════════════════════════════════════════════════════════════════
+
+
 def _annual_series_from_cache() -> dict:
-    """Build the same 8-parameter forecast menu as before, but sourced
-    from whatever get_dashboard_data() currently holds (live-synced or
-    fallback) rather than a hardcoded snapshot — so the Forecast Lab
-    tracks new fiscal years automatically, same as the main dashboard."""
+    """Build the annual Forecast Lab menu from the live dashboard cache."""
     d = get_dashboard_data()
-    ae, cg, sr, fin, sl = d["annualEnergy"], d["consumers"], d["sales"], d["financial"], d["systemLoss"]
+    ae, cg, sr, fin, sl = (
+        d["annualEnergy"], d["consumers"], d["sales"],
+        d["financial"], d["systemLoss"]
+    )
     tx, ss = d["transmission"], d["substation"]
 
     def yrs(y_list):
-        return [int(y) for y in y_list]
+        out = []
+        for y in y_list or []:
+            try:
+                out.append(int(y))
+            except (TypeError, ValueError):
+                continue
+        return out
 
     return {
-        "totalAvailability": {"label": "Total Energy Availability (MU)", "unit": "MU",
-                               "years": yrs(ae["years"]), "values": ae.get("total", [])},
-        "nationalPeak": {"label": "National Peak Demand (MW)", "unit": "MW",
-                          "years": yrs(ae["years"]), "values": ae.get("national_peak", [])},
-        "systemLoss": {"label": "System Loss (%)", "unit": "%",
-                        "years": yrs(sl["years"]), "values": sl["system"]},
-        "totalConsumers": {"label": "Total Consumers (No.)", "unit": "consumers",
-                            "years": yrs(cg["years"]), "values": cg["total"]},
-        "totalRevenue": {"label": "Total Gross Revenue (Rs. Million)", "unit": "Rs. Million",
-                          "years": yrs(sr["years"]), "values": sr["total"]},
-        "profitLoss": {"label": "Profit / Loss (Rs. Million)", "unit": "Rs. Million",
-                        "years": yrs(fin["years"]), "values": fin["profit_loss"]},
-        "transmissionTotal": {"label": "Transmission Lines (Circuit Km)", "unit": "Ckt. Km",
-                               "years": None, "fy_labels": tx["years"], "values": tx["total"]},
-        "substationCap": {"label": "Substation Capacity (MVA)", "unit": "MVA",
-                           "years": None, "fy_labels": ss["years"], "values": ss["capacity"]},
+        "totalAvailability": {
+            "label": "Total Energy Availability (MU)", "unit": "MU",
+            "years": yrs(ae["years"]), "values": ae.get("total", [])
+        },
+        "nationalPeak": {
+            "label": "National Peak Demand (MW)", "unit": "MW",
+            "years": yrs(ae["years"]), "values": ae.get("national_peak", [])
+        },
+        "systemLoss": {
+            "label": "System Loss (%)", "unit": "%",
+            "years": yrs(sl["years"]), "values": sl["system"]
+        },
+        "totalConsumers": {
+            "label": "Total Consumers (No.)", "unit": "consumers",
+            "years": yrs(cg["years"]), "values": cg["total"]
+        },
+        "totalRevenue": {
+            "label": "Total Gross Revenue (Rs. Million)", "unit": "Rs. Million",
+            "years": yrs(sr["years"]), "values": sr["total"]
+        },
+        "profitLoss": {
+            "label": "Profit / Loss (Rs. Million)", "unit": "Rs. Million",
+            "years": yrs(fin["years"]), "values": fin["profit_loss"]
+        },
+        "transmissionTotal": {
+            "label": "Transmission Lines (Circuit Km)", "unit": "Ckt. Km",
+            "years": None, "fy_labels": tx["years"], "values": tx["total"]
+        },
+        "substationCap": {
+            "label": "Substation Capacity (MVA)", "unit": "MVA",
+            "years": None, "fy_labels": ss["years"], "values": ss["capacity"]
+        },
     }
 
 
 def _monthly_series_from_cache() -> dict:
     d = get_dashboard_data()
     eb = d["energyBalanceMonthly"]
-    fy_order = sorted(eb.keys())  # chronological if FY strings sort correctly
+    # Preserve the source order when possible. FY labels in the workbook are
+    # chronological after parsing, but sorting by string can be unsafe for
+    # mixed labels, so use insertion order from the parsed dictionary.
+    fy_order = list(eb.keys())
     labels, values = [], []
     for fy in fy_order:
         entry = eb[fy]
@@ -939,198 +986,281 @@ def _monthly_series_from_cache() -> dict:
         for m, v in zip(months, demand):
             labels.append(f"{fy} {m}")
             values.append(v)
-    return {"monthlySystemDemand": {
-        "label": "Monthly System Energy Demand (GWh) — seasonal, period=12",
-        "unit": "GWh", "labels": labels, "values": values, "season_length": 12,
-    }}
+    return {
+        "monthlySystemDemand": {
+            "label": "Monthly System Energy Demand (GWh) — seasonal, period=12",
+            "unit": "GWh", "labels": labels, "values": values,
+            "season_length": 12,
+        }
+    }
 
+
+# Optional modern classical forecasting method. It is deliberately optional
+# so an older statsmodels deployment will not break the whole application.
+try:
+    from statsmodels.tsa.forecasting.theta import ThetaModel
+    _THETA_AVAILABLE = True
+except Exception:
+    ThetaModel = None
+    _THETA_AVAILABLE = False
+
+
+# ──────────────────────────────────────────────────────────────────────
+# MODEL AVAILABILITY / DROPDOWN
+# ──────────────────────────────────────────────────────────────────────
 
 def _viable_models_for_values(x_hist, values, monthly, season_length=12):
-    """Which models are worth offering for THIS parameter's specific
-    history. This is a FAST length-based heuristic, not a real fit —
-    actually fitting every candidate model (ARIMA/SARIMA in particular
-    do a multi-combination grid search) for every parameter on every
-    Forecast Lab page load was far too slow and could time out the
-    params endpoint entirely, leaving the dropdowns empty. The real
-    protection against a model that fails or spikes on this specific
-    data is the automatic fallback chain + spike guard already built
-    into _run_single_model(), which only runs once, when the person
-    actually clicks Run Forecast — this function just keeps obviously
-    hopeless choices (e.g. SARIMA on an 8-point annual series) off the
-    menu to begin with. Linear Regression is always included — it
-    only needs 2 distinct points and can't diverge."""
+    """Fast history-length filter. No expensive model fitting here."""
     n = len(values)
     ok = ["linear"]
     if n >= 3:
         ok.append("moving")
     if n >= 4:
-        ok.append("holt")
+        ok.extend(["holt", "damped_holt"])
     if n >= 6:
-        ok.append("arima")
-        ok.append("hybrid")
+        ok.extend(["arima", "hybrid", "ensemble"])
+        if _THETA_AVAILABLE:
+            ok.append("theta")
     if monthly and n >= season_length * 2:
         ok.append("sarima")
     return ok
 
 
 def forecast_param_choices():
-    """Dropdown-ready list of every forecastable parameter (annual +
-    the one seasonal monthly series), each tagged with whether it's
-    monthly (so the caller knows which run_forecast(monthly=) flag to
-    use) and with `models`: the list of models that actually run
-    cleanly for that specific parameter's history, so the Forecast
-    Lab's Model dropdown only ever offers a real, loadable option."""
+    """Return forecastable parameters and only models suitable for each."""
     out = []
+
     for k, v in _annual_series_from_cache().items():
         values, span = _clean_series(v["values"])
         if values is None:
             continue
-        x_hist = v["years"][span[0]:span[1] + 1] if v.get("years") else list(range(len(values)))
-        out.append({"label": v["label"], "value": k, "monthly": False,
-                     "models": _viable_models_for_values(x_hist, values, False)})
+        x_hist = (
+            v["years"][span[0]:span[1] + 1]
+            if v.get("years") else list(range(len(values)))
+        )
+        out.append({
+            "label": v["label"], "value": k, "monthly": False,
+            "models": _viable_models_for_values(x_hist, values, False)
+        })
+
     for k, v in _monthly_series_from_cache().items():
         values, span = _clean_series(v["values"])
         if values is None:
             continue
         season_length = v.get("season_length", 12)
-        out.append({"label": v["label"], "value": k, "monthly": True,
-                     "models": _viable_models_for_values(list(range(len(values))), values, True, season_length)})
+        out.append({
+            "label": v["label"], "value": k, "monthly": True,
+            "models": _viable_models_for_values(
+                list(range(len(values))), values, True, season_length
+            )
+        })
+
     return out
 
 
 MODEL_CHOICES_ANNUAL = [
     {"label": "Linear Regression", "value": "linear"},
-    {"label": "Holt Exponential Smoothing (trend)", "value": "holt"},
-    {"label": "Moving Average (3-yr)", "value": "moving"},
-    {"label": "ARIMA (auto order, AIC-selected)", "value": "arima"},
-    {"label": "Hybrid (Linear + ARIMA ensemble)", "value": "hybrid"},
+    {"label": "Moving Average (3-period)", "value": "moving"},
+    {"label": "Holt Exponential Smoothing", "value": "holt"},
+    {"label": "Damped Holt Trend", "value": "damped_holt"},
+    {"label": "ARIMA (AIC-selected)", "value": "arima"},
+    {"label": "Theta Forecast", "value": "theta"},
+    {"label": "Hybrid (Linear + ARIMA)", "value": "hybrid"},
+    {"label": "Auto Ensemble (validation-weighted)", "value": "ensemble"},
 ]
+
 MODEL_CHOICES_MONTHLY = MODEL_CHOICES_ANNUAL + [
     {"label": "SARIMA (seasonal, period=12)", "value": "sarima"},
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+# METRICS
+# ──────────────────────────────────────────────────────────────────────
+
 def _fit_metrics(actual, fitted) -> dict:
-    """R² / RMSE / MAE / MAPE between the historical series and each
-    model's in-sample fitted values. `fitted` may contain None/NaN for
-    warm-up periods (e.g. ARIMA's differencing order, a moving-average
-    window) — those points are dropped, matching the original demo's
-    calcMetrics() behaviour, not treated as zero-error."""
+    """In-sample R²/RMSE/MAE/MAPE/WAPE with safe handling of warm-up NaNs."""
     pairs = []
     for a, f in zip(actual, fitted):
-        if f is None or a is None:
+        if a is None or f is None:
             continue
         try:
-            fv = float(f)
+            av, fv = float(a), float(f)
         except (TypeError, ValueError):
             continue
-        if np.isnan(fv):
-            continue
-        pairs.append((float(a), fv))
+        if np.isfinite(av) and np.isfinite(fv):
+            pairs.append((av, fv))
+
     if len(pairs) < 2:
-        return {"r2": None, "rmse": None, "mae": None, "mape": None}
-    a = np.array([p[0] for p in pairs])
-    f = np.array([p[1] for p in pairs])
+        return {"r2": None, "rmse": None, "mae": None, "mape": None, "wape": None}
+
+    a = np.asarray([p[0] for p in pairs], dtype=float)
+    f = np.asarray([p[1] for p in pairs], dtype=float)
     resid = a - f
+    abs_err = np.abs(resid)
+
     ss_res = float(np.sum(resid ** 2))
     ss_tot = float(np.sum((a - a.mean()) ** 2))
-    r2 = None if ss_tot == 0 else round(1 - ss_res / ss_tot, 4)
-    rmse = round(float(np.sqrt(ss_res / len(a))), 4)
-    mae = round(float(np.mean(np.abs(resid))), 4)
+    r2 = None if ss_tot == 0 else round(1.0 - ss_res / ss_tot, 4)
+    rmse = round(float(np.sqrt(np.mean(resid ** 2))), 4)
+    mae = round(float(np.mean(abs_err)), 4)
+
     nz = a != 0
     mape = round(float(np.mean(np.abs(resid[nz] / a[nz]))) * 100, 2) if nz.any() else None
-    return {"r2": r2, "rmse": rmse, "mae": mae, "mape": mape}
+    denom = float(np.sum(np.abs(a)))
+    wape = round(float(np.sum(abs_err) / denom) * 100, 2) if denom else None
 
+    return {"r2": r2, "rmse": rmse, "mae": mae, "mape": mape, "wape": wape}
+
+
+def _validation_metrics(actual, predicted) -> dict:
+    """Out-of-sample rolling-origin validation metrics."""
+    pairs = []
+    for a, p in zip(actual, predicted):
+        try:
+            av, pv = float(a), float(p)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(av) and np.isfinite(pv):
+            pairs.append((av, pv))
+
+    if not pairs:
+        return {"validation_mae": None, "validation_rmse": None,
+                "validation_mape": None, "validation_wape": None}
+
+    a = np.asarray([x[0] for x in pairs], dtype=float)
+    p = np.asarray([x[1] for x in pairs], dtype=float)
+    e = a - p
+    mae = float(np.mean(np.abs(e)))
+    rmse = float(np.sqrt(np.mean(e ** 2)))
+    nz = a != 0
+    mape = float(np.mean(np.abs(e[nz] / a[nz])) * 100) if nz.any() else None
+    denom = float(np.sum(np.abs(a)))
+    wape = float(np.sum(np.abs(e)) / denom * 100) if denom else None
+    return {
+        "validation_mae": round(mae, 4),
+        "validation_rmse": round(rmse, 4),
+        "validation_mape": round(mape, 2) if mape is not None else None,
+        "validation_wape": round(wape, 2) if wape is not None else None,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# SERIES CLEANING
+# ──────────────────────────────────────────────────────────────────────
 
 def _clean_series(raw_vals):
-    """Trim a component series to its first..last non-None span and
-    linearly interpolate any internal gaps, so a category column with a
-    blank cell or two (common in a hand-maintained sheet) still gets a
-    clean numeric array to forecast on. Returns (values, (first_idx,
-    last_idx)) against the ORIGINAL indices, or (None, None) if there's
-    not enough real data (fewer than 3 usable points) to fit anything."""
+    """Trim outer missing values and linearly interpolate internal gaps."""
     n = len(raw_vals)
     first = next((i for i in range(n) if raw_vals[i] is not None), None)
     last = next((i for i in range(n - 1, -1, -1) if raw_vals[i] is not None), None)
     if first is None or last is None or (last - first) < 2:
         return None, None
+
     vals = [float(v) if v is not None else None for v in raw_vals[first:last + 1]]
+
     for i, v in enumerate(vals):
-        if v is None:
-            prev_i = max(j for j in range(i - 1, -1, -1) if vals[j] is not None)
-            next_i = min(j for j in range(i + 1, len(vals)) if vals[j] is not None)
-            frac = (i - prev_i) / (next_i - prev_i)
-            vals[i] = vals[prev_i] + frac * (vals[next_i] - vals[prev_i])
+        if v is not None:
+            continue
+        prev = [j for j in range(i - 1, -1, -1) if vals[j] is not None]
+        nxt = [j for j in range(i + 1, len(vals)) if vals[j] is not None]
+        if not prev or not nxt:
+            return None, None
+        prev_i, next_i = prev[0], nxt[0]
+        frac = (i - prev_i) / (next_i - prev_i)
+        vals[i] = vals[prev_i] + frac * (vals[next_i] - vals[prev_i])
+
     return vals, (first, last)
 
+
+# ──────────────────────────────────────────────────────────────────────
+# BASIC MODELS
+# ──────────────────────────────────────────────────────────────────────
 
 def _linear_forecast(x_hist, y_hist, n_ahead):
     x = np.asarray(x_hist, dtype=float)
     y = np.asarray(y_hist, dtype=float)
     slope, intercept = np.polyfit(x, y, 1)
-    last_x = x[-1]
     fitted = [float(slope * xi + intercept) for xi in x]
+    last_x = x[-1]
     pred = [float(slope * (last_x + i) + intercept) for i in range(1, n_ahead + 1)]
-    return pred, \
-        {"model": "Linear Regression", "slope": round(float(slope), 4), "intercept": round(float(intercept), 2)}, \
-        fitted
+    return pred, {
+        "model": "Linear Regression",
+        "slope": round(float(slope), 6),
+        "intercept": round(float(intercept), 4),
+    }, fitted
 
 
 def _moving_avg_forecast(y_hist, n_ahead, window=3):
-    y = list(y_hist)
+    y = [float(v) for v in y_hist]
     window = min(window, len(y))
-    fitted = [float(sum(y[max(0, i - window + 1):i + 1]) / len(y[max(0, i - window + 1):i + 1]))
-              for i in range(len(y))]
-    ma = sum(y[-window:]) / window
+    fitted = []
+    for i in range(len(y)):
+        seg = y[max(0, i - window + 1):i + 1]
+        fitted.append(float(np.mean(seg)))
+    ma = float(np.mean(y[-window:]))
     trend = 0.0
     if len(y) >= window + 1:
-        prev_ma = sum(y[-window - 1:-1]) / window
+        prev_ma = float(np.mean(y[-window - 1:-1]))
         trend = ma - prev_ma
     pred = [float(ma + trend * i) for i in range(1, n_ahead + 1)]
-    return pred, \
-        {"model": f"Moving Average ({window}-period)", "last_ma": round(ma, 2), "trend_per_step": round(trend, 2)}, \
-        fitted
+    return pred, {
+        "model": f"Moving Average ({window}-period)",
+        "last_ma": round(ma, 4),
+        "trend_per_step": round(trend, 4),
+    }, fitted
 
 
-def _holt_forecast(y_hist, n_ahead):
+def _holt_forecast(y_hist, n_ahead, damped=False):
     y = pd.Series(y_hist, dtype=float)
-    fit = Holt(y, initialization_method="estimated").fit(optimized=True)
+    fit = Holt(
+        y,
+        damped_trend=damped,
+        initialization_method="estimated"
+    ).fit(optimized=True)
     fc = fit.forecast(n_ahead)
-    fitted = [float(v) for v in fit.fittedvalues.values]
-    return [float(v) for v in fc.values], \
-        {"model": "Holt Exponential Smoothing",
-         "alpha": round(float(fit.params["smoothing_level"]), 3),
-         "beta": round(float(fit.params["smoothing_trend"]), 3)}, \
-        fitted
+    fitted = [float(v) if np.isfinite(v) else None for v in fit.fittedvalues.values]
+
+    params = fit.params
+    meta = {
+        "model": "Damped Holt Trend" if damped else "Holt Exponential Smoothing",
+        "alpha": round(float(params.get("smoothing_level", np.nan)), 4),
+        "beta": round(float(params.get("smoothing_trend", np.nan)), 4),
+    }
+    if damped:
+        meta["damping"] = round(float(params.get("damping_trend", np.nan)), 4)
+
+    return [float(v) for v in fc.values], meta, fitted
 
 
+# ──────────────────────────────────────────────────────────────────────
+# ARIMA / SARIMA
+# ──────────────────────────────────────────────────────────────────────
 
-# A curated shortlist beats a full (max_p+1)x(max_d+1)x(max_q+1) grid: the
-# exhaustive grid (up to 17 MLE fits) was routinely pushing single-parameter
-# ARIMA requests — and multi-component composite/Hybrid requests, which pay
-# this cost once per component — past gunicorn's default 30s worker
-# timeout. When that happens the worker is killed mid-request and the
-# platform proxy returns an HTML error page instead of JSON, which is what
-# surfaces client-side as "Unexpected token '<' ... is not valid JSON".
-# These orders cover the vast majority of well-behaved NEA series while
-# cutting fit count (and wall-clock time) by roughly 60-70%.
-_ARIMA_CANDIDATES = [(1, 1, 0), (0, 1, 1), (1, 1, 1), (2, 1, 0), (0, 1, 2), (2, 1, 1)]
+# Curated grids preserve the original application's timeout protection.
+_ARIMA_CANDIDATES = [
+    (1, 1, 0), (0, 1, 1), (1, 1, 1),
+    (2, 1, 0), (0, 1, 2), (2, 1, 1),
+]
 _ARIMA_FIT_KW = {"method_kwargs": {"maxiter": 50}}
 
 
-def _best_arima(y_hist, max_p=2, max_d=1, max_q=2):
+def _best_arima(y_hist):
     y = pd.Series(y_hist, dtype=float)
-    best_aic, best_order, best_fit = np.inf, (1, 1, 0), None
+    best_aic, best_order, best_fit = np.inf, None, None
+
     for order in _ARIMA_CANDIDATES:
         try:
             fit = ARIMA(y, order=order).fit(**_ARIMA_FIT_KW)
             if np.isfinite(fit.aic) and fit.aic < best_aic:
-                best_aic, best_order, best_fit = fit.aic, order, fit
+                best_aic, best_order, best_fit = float(fit.aic), order, fit
         except Exception:
             continue
+
     if best_fit is None:
         best_fit = ARIMA(y, order=(1, 1, 0)).fit(**_ARIMA_FIT_KW)
-        best_order, best_aic = (1, 1, 0), best_fit.aic
+        best_order, best_aic = (1, 1, 0), float(best_fit.aic)
+
     return best_fit, best_order, best_aic
 
 
@@ -1141,17 +1271,10 @@ def _arima_forecast(y_hist, n_ahead):
     ci = fc.conf_int(alpha=0.20)
     lo = [float(v) for v in ci.iloc[:, 0].values]
     hi = [float(v) for v in ci.iloc[:, 1].values]
-    fitted = [float(v) if not np.isnan(v) else None for v in fit.fittedvalues.values]
-    return mean, {"model": f"ARIMA{order}", "aic": round(float(aic), 2)}, lo, hi, fitted
+    fitted = [float(v) if np.isfinite(v) else None for v in fit.fittedvalues.values]
+    return mean, {"model": f"ARIMA{order}", "aic": round(aic, 4)}, lo, hi, fitted
 
 
-
-# Seasonal MLE fits are far slower than plain ARIMA (each one estimates a
-# full state-space model over a 12-period cycle), so the original 3x3=9
-# combination grid was the single biggest contributor to worker timeouts.
-# Four well-chosen (order, seasonal_order) pairs cover the typical shapes
-# of NEA's monthly series — trend-only, seasonal-difference, and a couple
-# of blended variants — at under half the fit count.
 _SARIMA_CANDIDATES_TEMPLATE = [
     ((1, 1, 0), (1, 0, 0)),
     ((0, 1, 1), (0, 1, 1)),
@@ -1164,46 +1287,267 @@ _SARIMA_FIT_KW = {"disp": False, "maxiter": 50}
 def _sarima_forecast(y_hist, n_ahead, season_length=12):
     y = pd.Series(y_hist, dtype=float)
     best_aic, best_spec, best_fit = np.inf, None, None
-    for order, sorder_base in _SARIMA_CANDIDATES_TEMPLATE:
-        sorder = (*sorder_base, season_length)
+
+    for order, seasonal_base in _SARIMA_CANDIDATES_TEMPLATE:
+        sorder = (*seasonal_base, season_length)
         try:
-            fit = SARIMAX(y, order=order, seasonal_order=sorder,
-                           enforce_stationarity=False, enforce_invertibility=False).fit(**_SARIMA_FIT_KW)
+            fit = SARIMAX(
+                y,
+                order=order,
+                seasonal_order=sorder,
+                enforce_stationarity=False,
+                enforce_invertibility=False,
+            ).fit(**_SARIMA_FIT_KW)
             if np.isfinite(fit.aic) and fit.aic < best_aic:
-                best_aic, best_spec, best_fit = fit.aic, (order, sorder), fit
+                best_aic, best_spec, best_fit = float(fit.aic), (order, sorder), fit
         except Exception:
             continue
+
     if best_fit is None:
-        best_fit = SARIMAX(y, order=(1, 1, 0), seasonal_order=(1, 0, 0, season_length),
-                            enforce_stationarity=False, enforce_invertibility=False).fit(**_SARIMA_FIT_KW)
+        best_fit = SARIMAX(
+            y,
+            order=(1, 1, 0),
+            seasonal_order=(1, 0, 0, season_length),
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        ).fit(**_SARIMA_FIT_KW)
         best_spec = ((1, 1, 0), (1, 0, 0, season_length))
-        best_aic = best_fit.aic
+        best_aic = float(best_fit.aic)
+
     fc = best_fit.get_forecast(n_ahead)
     mean = [float(v) for v in fc.predicted_mean.values]
     ci = fc.conf_int(alpha=0.20)
     lo = [float(v) for v in ci.iloc[:, 0].values]
     hi = [float(v) for v in ci.iloc[:, 1].values]
+    fitted = [float(v) if np.isfinite(v) else None for v in best_fit.fittedvalues.values]
     order, sorder = best_spec
-    fitted = [float(v) if not np.isnan(v) else None for v in best_fit.fittedvalues.values]
-    return mean, {"model": f"SARIMA{order}x{sorder}", "aic": round(float(best_aic), 2)}, lo, hi, fitted
+    return mean, {
+        "model": f"SARIMA{order}x{sorder}",
+        "aic": round(best_aic, 4),
+    }, lo, hi, fitted
 
+
+# ──────────────────────────────────────────────────────────────────────
+# THETA
+# ──────────────────────────────────────────────────────────────────────
+
+def _theta_forecast(y_hist, n_ahead):
+    if not _THETA_AVAILABLE:
+        raise RuntimeError("ThetaModel is unavailable in this statsmodels installation.")
+    y = pd.Series(y_hist, dtype=float)
+    fit = ThetaModel(y, deseasonalize=False).fit()
+    fc = fit.forecast(n_ahead)
+    try:
+        fitted = [float(v) if np.isfinite(v) else None for v in fit.fittedvalues]
+    except Exception:
+        fitted = [float(v) for v in y]
+    return [float(v) for v in np.asarray(fc)], {"model": "Theta Forecast"}, fitted
+
+
+# ──────────────────────────────────────────────────────────────────────
+# HYBRID
+# ──────────────────────────────────────────────────────────────────────
 
 def _hybrid_forecast(x_hist, y_hist, n_ahead):
-    lin_vals, lin_meta, lin_fitted = _linear_forecast(x_hist, y_hist, n_ahead)
-    ar_vals, ar_meta, lo, hi, ar_fitted = _arima_forecast(y_hist, n_ahead)
-    blended = [float((a + b) / 2) for a, b in zip(lin_vals, ar_vals)]
+    lin_pred, lin_meta, lin_fitted = _linear_forecast(x_hist, y_hist, n_ahead)
+    ar_pred, ar_meta, lo, hi, ar_fitted = _arima_forecast(y_hist, n_ahead)
+    pred = [float((a + b) / 2.0) for a, b in zip(lin_pred, ar_pred)]
     fitted = []
     for a, b in zip(lin_fitted, ar_fitted):
         if a is not None and b is not None:
-            fitted.append(float((a + b) / 2))
+            fitted.append(float((a + b) / 2.0))
         elif a is not None:
             fitted.append(float(a))
         else:
             fitted.append(b)
-    meta = {"model": f"Hybrid (Linear + {ar_meta['model']}, averaged)",
-            "linear_slope": lin_meta["slope"], "arima_aic": ar_meta["aic"]}
-    return blended, meta, fitted
+    return pred, {
+        "model": "Hybrid (Linear + ARIMA)",
+        "linear_slope": lin_meta["slope"],
+        "arima_aic": ar_meta["aic"],
+    }, fitted
 
+
+# ──────────────────────────────────────────────────────────────────────
+# BACKTESTING / MODEL SELECTION
+# ──────────────────────────────────────────────────────────────────────
+
+def _is_reasonable_forecast(values, pred):
+    """Reject unstable forecasts; NEVER alter a forecast that passes."""
+    if not pred:
+        return False
+    try:
+        pred_f = [float(v) for v in pred]
+    except (TypeError, ValueError):
+        return False
+    if any(not np.isfinite(v) for v in pred_f):
+        return False
+
+    vals = [float(v) for v in values if v is not None]
+    if len(vals) < 2:
+        return True
+
+    diffs = [abs(vals[i] - vals[i - 1]) for i in range(1, len(vals))]
+    max_step = max(diffs) if diffs else 0.0
+    median_step = float(np.median(diffs)) if diffs else 0.0
+    scale = max(abs(vals[-1]), 1e-6)
+
+    # Generous limit: 5x largest historical step, 10x typical step,
+    # or 200% of the base value, whichever is larger.
+    cap = max(max_step * 5.0, median_step * 10.0, scale * 2.0, 1e-6)
+    chain = [vals[-1]] + pred_f
+    future_steps = [abs(chain[i] - chain[i - 1]) for i in range(1, len(chain))]
+    return all(step <= cap for step in future_steps)
+
+
+def _rolling_backtest(model, values, monthly=False, season_length=12, max_origins=4):
+    """Rolling one-step validation. Small and bounded to avoid web timeouts."""
+    y = [float(v) for v in values]
+    n = len(y)
+    min_train = 4 if model in {"linear", "moving", "holt", "damped_holt"} else 6
+    if n <= min_train:
+        return {"validation_mae": None, "validation_rmse": None,
+                "validation_mape": None, "validation_wape": None,
+                "validation_points": 0}
+
+    origins = list(range(min_train, n))[-max_origins:]
+    actual, predicted = [], []
+
+    for origin in origins:
+        train = y[:origin]
+        try:
+            pred, _, _, _, _ = _fit_one_model(
+                model,
+                list(range(len(train))),
+                train,
+                1,
+                monthly,
+                season_length,
+            )
+            if pred and np.isfinite(float(pred[0])):
+                actual.append(y[origin])
+                predicted.append(float(pred[0]))
+        except Exception:
+            continue
+
+    metrics = _validation_metrics(actual, predicted)
+    metrics["validation_points"] = len(actual)
+    return metrics
+
+
+def _fit_metrics_with_backtest(model, values, fitted, monthly, season_length):
+    meta = _fit_metrics(values, fitted)
+    # Backtest only when there is enough history; keep this bounded because
+    # this is a user-facing HTTP request.
+    if len(values) >= 7 and model not in {"ensemble"}:
+        meta.update(_rolling_backtest(model, values, monthly, season_length))
+    else:
+        meta.update({
+            "validation_mae": None,
+            "validation_rmse": None,
+            "validation_mape": None,
+            "validation_wape": None,
+            "validation_points": 0,
+        })
+    return meta
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ACCURACY-WEIGHTED ENSEMBLE
+# ──────────────────────────────────────────────────────────────────────
+
+def _ensemble_forecast(x_hist, y_hist, n_ahead, monthly, season_length):
+    """Combine models using inverse rolling-validation MAE weights."""
+    candidates = ["linear", "moving", "holt", "damped_holt"]
+    if len(y_hist) >= 6:
+        candidates.append("arima")
+        if _THETA_AVAILABLE:
+            candidates.append("theta")
+        if monthly and len(y_hist) >= season_length * 2:
+            candidates.append("sarima")
+
+    results = []
+    for model in candidates:
+        try:
+            validation = _rolling_backtest(
+                model, y_hist, monthly, season_length, max_origins=3
+            )
+            score = validation.get("validation_mae")
+            if score is None or not np.isfinite(score):
+                continue
+
+            pred, meta, lo, hi, fitted = _fit_one_model(
+                model, x_hist, y_hist, n_ahead, monthly, season_length
+            )
+            if not pred or not _is_reasonable_forecast(y_hist, pred):
+                continue
+            results.append({
+                "model": model,
+                "score": max(float(score), 1e-9),
+                "pred": [float(v) for v in pred],
+                "fitted": fitted,
+                "meta": meta,
+            })
+        except Exception:
+            continue
+
+    # If rolling validation cannot rank models, use a small stable fallback
+    # rather than failing the entire Forecast Lab request.
+    if not results:
+        pred, meta, fitted = _holt_forecast(y_hist, n_ahead, damped=True)
+        return pred, {**meta, "model": "Auto Ensemble → Damped Holt fallback"}, [], [], fitted
+
+    inv = np.asarray([1.0 / r["score"] for r in results], dtype=float)
+    weights = inv / inv.sum()
+
+    pred = [
+        float(sum(w * r["pred"][i] for w, r in zip(weights, results)))
+        for i in range(n_ahead)
+    ]
+
+    # Model-dispersion interval: useful for communicating model uncertainty.
+    # This is explicitly NOT a formal statistical confidence interval.
+    lo, hi = [], []
+    for i, center in enumerate(pred):
+        vals = [r["pred"][i] for r in results]
+        if len(vals) >= 2:
+            sd = float(np.std(vals, ddof=1))
+            margin = 1.28 * sd  # approximate 80% dispersion band
+        else:
+            margin = 0.0
+        lo.append(float(center - margin))
+        hi.append(float(center + margin))
+
+    fitted = []
+    for i in range(len(y_hist)):
+        pairs = []
+        for r, w in zip(results, weights):
+            f = r["fitted"]
+            if i < len(f) and f[i] is not None and np.isfinite(float(f[i])):
+                pairs.append((float(f[i]), float(w)))
+        if pairs:
+            den = sum(w for _, w in pairs)
+            fitted.append(float(sum(v * w for v, w in pairs) / den))
+        else:
+            fitted.append(None)
+
+    return pred, {
+        "model": "Auto Ensemble (validation-weighted)",
+        "models_used": [r["model"] for r in results],
+        "ensemble_weights": {
+            r["model"]: round(float(w), 4)
+            for r, w in zip(results, weights)
+        },
+        "validation_mae_by_model": {
+            r["model"]: round(float(r["score"]), 4)
+            for r in results
+        },
+        "uncertainty_type": "model-dispersion (approx. 80%)",
+    }, lo, hi, fitted
+
+
+# ──────────────────────────────────────────────────────────────────────
+# DISPATCH
+# ──────────────────────────────────────────────────────────────────────
 
 @dataclass
 class ForecastResult:
@@ -1218,158 +1562,133 @@ class ForecastResult:
     meta: dict = field(default_factory=dict)
 
 
-def _is_reasonable_forecast(values, pred):
-    """Reject a forecast that jumps far more violently than the
-    historical series ever did — the usual symptom of an ill-fitting
-    ARIMA/SARIMA order or an unstable Holt trend on a short/noisy
-    series, not a genuine signal. Compares each forecasted step-to-step
-    change against the largest and typical step-to-step change actually
-    observed in history, with generous headroom for a real accelerating
-    trend. Used to trigger the model fallback chain in
-    _run_single_model(), not to reject a forecast outright."""
-    if not pred:
-        return False
-    try:
-        pred_f = [float(v) for v in pred]
-    except (TypeError, ValueError):
-        return False
-    if any(not np.isfinite(v) for v in pred_f):
-        return False
-    vals = [float(v) for v in values if v is not None]
-    if len(vals) < 2:
-        return True
-    hist_diffs = [abs(vals[i] - vals[i - 1]) for i in range(1, len(vals))]
-    max_hist_step = max(hist_diffs) if hist_diffs else 0.0
-    typical_step = float(np.median(hist_diffs)) if hist_diffs else 0.0
-    last_val = abs(vals[-1])
-    cap = max(max_hist_step * 4, typical_step * 8, last_val * 2, 1e-6)
-    chain = [vals[-1]] + pred_f
-    step_changes = [abs(chain[i] - chain[i - 1]) for i in range(1, len(chain))]
-    return all(sv <= cap for sv in step_changes)
-
-
-# Fallback order tried, in turn, whenever the requested model either
-# raises an exception or clears the spike check above. "linear" is the
-# final rung — a simple least-squares fit on ≥3 points can't diverge or
-# throw, so every parameter is always forecastable by *something*.
-_MODEL_FALLBACK_CHAIN = ["holt", "moving", "linear"]
-
-
 def _fit_one_model(model: str, x_hist, values, n_ahead: int, monthly: bool, season_length: int = 12):
-    """Run exactly the requested model, no fallback. Returns
-    (pred, meta, lo, hi, fitted); lo/hi are [] for models that don't
-    produce a confidence interval. Raises on failure — callers that
-    want automatic fallback should go through _run_single_model()."""
     lo, hi = [], []
+
     if model == "linear":
         pred, meta, fitted = _linear_forecast(x_hist, values, n_ahead)
     elif model == "moving":
         pred, meta, fitted = _moving_avg_forecast(values, n_ahead)
     elif model == "holt":
-        pred, meta, fitted = _holt_forecast(values, n_ahead)
+        pred, meta, fitted = _holt_forecast(values, n_ahead, damped=False)
+    elif model == "damped_holt":
+        pred, meta, fitted = _holt_forecast(values, n_ahead, damped=True)
     elif model == "arima":
         pred, meta, lo, hi, fitted = _arima_forecast(values, n_ahead)
+    elif model == "theta":
+        pred, meta, fitted = _theta_forecast(values, n_ahead)
     elif model == "sarima":
         if not monthly:
-            raise ValueError("SARIMA is only offered for the monthly (seasonal) series — "
-                              "the annual series are too short and non-seasonal for it to mean anything.")
+            raise ValueError("SARIMA is only available for monthly seasonal data.")
         pred, meta, lo, hi, fitted = _sarima_forecast(values, n_ahead, season_length)
     elif model == "hybrid":
         pred, meta, fitted = _hybrid_forecast(x_hist, values, n_ahead)
+    elif model == "ensemble":
+        pred, meta, lo, hi, fitted = _ensemble_forecast(
+            x_hist, values, n_ahead, monthly, season_length
+        )
     else:
-        raise ValueError(f"Unknown model {model!r}")
+        raise ValueError(f"Unknown forecasting model {model!r}")
+
     return pred, meta, lo, hi, fitted
+
+
+_MODEL_FALLBACK_CHAIN = ["damped_holt", "holt", "moving", "linear"]
 
 
 def _run_single_model(model: str, x_hist, values, n_ahead: int, monthly: bool, season_length: int = 12):
-    """Shared dispatcher used by both run_forecast() (single series) and
-    run_composite_forecast() (per-component series inside a stacked
-    group), so every parameter — whether it's charted on its own or as
-    one slice of a stack — goes through the exact same statsmodels
-    fitting code, with the same automatic fallback and anti-spike
-    correction. Returns (pred, meta, lo, hi, fitted); lo/hi are []
-    for models that don't produce a confidence interval.
+    """
+    Run the requested forecasting method and fall back safely if it fails.
 
-    FALLBACK CHAIN: the requested model is tried first. If it raises
-    (too little data, a non-convergent fit, an unsupported
-    combination like SARIMA on an annual series) or its forecast
-    clears the spike check in _is_reasonable_forecast(), the next
-    model in _MODEL_FALLBACK_CHAIN is tried instead, ending at Linear
-    Regression — which only needs 2 distinct points and can't diverge
-    — so every parameter always produces *some* forecast rather than
-    an error or a wild spike. meta['requested_model'] /
-    meta['fallback_used'] record when this happened.
+    CRITICAL:
+        There is NO continuity offset here.
 
-    CONTINUITY CORRECTION: every forecast is anchored so its FIRST
-    predicted point equals the last real observation exactly — this is
-    what actually gets drawn on the chart (history line ends at
-    last_actual, forecast line starts at pred[0]), so that's the join
-    that must be continuous. Earlier this anchored to the model's
-    internal fitted level instead (fit.fittedvalues[-1]), which only
-    guarantees the SHAPE of the forecast lines up with the model's own
-    smoothed trajectory — it does nothing to bound the jump from
-    last_actual to pred[0] specifically. A model whose one-step-ahead
-    delta is large (common for ARIMA/Hybrid on a short or volatile
-    series) could pass that old anchor and still leave a big visible
-    spike at the seam, and when several such components are summed in
-    a stacked/composite chart those individually-"reasonable" jumps
-    compound into a much larger spike on the total line. Anchoring to
-    pred[0] instead removes the seam entirely — every candidate's
-    forecast line starts exactly where the history line ends, by
-    construction, not just approximately. The offset is still a single
-    constant shift applied to every predicted (and CI) point, so the
-    model's own shape/trend beyond the first step is fully preserved —
-    only WHERE the curve starts changes, not how it moves after that.
-    This shift is applied BEFORE the spike check, not after — a
-    candidate needs to look reasonable in the same frame that will
-    actually be plotted."""
-    chain = [model] + [m for m in _MODEL_FALLBACK_CHAIN if m != model]
-    pred = meta = fitted = None
-    lo, hi = [], []
+        pred[0] is the genuine first model forecast.
+
+    The anti-spike check only rejects an unstable candidate. It never changes
+    the candidate's values. This preserves the statistical meaning of the
+    first forecast period.
+    """
+    if model == "ensemble":
+        chain = ["ensemble"] + _MODEL_FALLBACK_CHAIN
+    else:
+        chain = [model] + [m for m in _MODEL_FALLBACK_CHAIN if m != model]
+
     last_err = None
-    last_actual = values[-1] if len(values) else None
-    for m in chain:
+
+    for current_model in chain:
         try:
             cand_pred, cand_meta, cand_lo, cand_hi, cand_fitted = _fit_one_model(
-                m, x_hist, values, n_ahead, monthly, season_length)
-        except Exception as e:
-            last_err = e
+                current_model, x_hist, values, n_ahead, monthly, season_length
+            )
+        except Exception as exc:
+            last_err = exc
             continue
 
-        # Anchor this candidate to the last real observation first —
-        # force pred[0] to equal last_actual EXACTLY, so the chart's
-        # history→forecast join is always continuous, regardless of how
-        # far the model's own internal level/one-step delta had drifted
-        # from the raw last observation.
-        if last_actual is not None and cand_pred:
-            try:
-                offset = float(last_actual) - float(cand_pred[0])
-            except (TypeError, ValueError):
-                offset = 0.0
-            if offset:
-                cand_pred = [p + offset for p in cand_pred]
-                if cand_lo:
-                    cand_lo = [v + offset for v in cand_lo]
-                if cand_hi:
-                    cand_hi = [v + offset for v in cand_hi]
+        # Genuine forecast validation — NO SHIFTING / NO ANCHORING.
+        if not cand_pred:
+            continue
 
-        # ...THEN judge whether it's reasonable — this is what actually
-        # gets drawn, so this is what needs to clear the spike check.
-        if m == "linear" or _is_reasonable_forecast(values, cand_pred):
-            pred, meta, lo, hi, fitted = cand_pred, cand_meta, cand_lo, cand_hi, cand_fitted
-            if m != model:
-                meta = {**meta, "requested_model": model, "fallback_used": m}
-            break
-    else:
-        raise last_err or ValueError(f"Could not fit any forecasting model for this parameter.")
+        try:
+            valid = all(np.isfinite(float(v)) for v in cand_pred)
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            continue
 
-    return pred, meta, lo, hi, fitted
+        # Reject explosive forecasts but do not modify acceptable forecasts.
+        if current_model != "linear" and not _is_reasonable_forecast(values, cand_pred):
+            continue
+
+        meta = dict(cand_meta)
+        if current_model != model:
+            meta.update({
+                "requested_model": model,
+                "fallback_used": current_model,
+            })
+
+        return cand_pred, meta, cand_lo, cand_hi, cand_fitted
+
+    raise last_err or ValueError(
+        f"Could not fit any forecasting model for this parameter."
+    )
+
+
+def _forecast_constraints(param_key: str, unit: str, values):
+    """Return simple domain constraints without changing the model forecast."""
+    non_negative = all(float(v) >= 0 for v in values)
+    # System loss is physically a percentage. Keep a broad engineering range
+    # only for this specific parameter. The model itself is still untouched;
+    # this is a post-processing guard against impossible displayed values.
+    bounded = None
+    if param_key == "systemLoss":
+        bounded = (0.0, 100.0)
+    return {"non_negative": non_negative, "bounds": bounded}
+
+
+def _apply_forecast_constraints(pred, lo, hi, constraints):
+    """Apply only physical display constraints, never base-year anchoring."""
+    def clean(v):
+        x = float(v)
+        if constraints.get("non_negative"):
+            x = max(0.0, x)
+        bounds = constraints.get("bounds")
+        if bounds:
+            x = min(max(x, bounds[0]), bounds[1])
+        return x
+
+    pred = [clean(v) for v in pred]
+    lo = [clean(v) for v in lo] if lo else []
+    hi = [clean(v) for v in hi] if hi else []
+    return pred, lo, hi
 
 
 def run_forecast(param_key: str, model: str, n_ahead: int, monthly: bool = False) -> ForecastResult:
     if not get_dashboard_data():
         raise ValueError("NEA operational data is not available right now. Please check back later.")
+
     n_ahead = max(1, min(int(n_ahead), 20))
+
     if monthly:
         series = _monthly_series_from_cache()[param_key]
         raw_labels = series["labels"]
@@ -1384,16 +1703,18 @@ def run_forecast(param_key: str, model: str, n_ahead: int, monthly: bool = False
             raw_labels = series["fy_labels"]
         season_length = 12
 
-    # Trim to the real (first..last non-None) span and interpolate any
-    # internal gaps — a hand-maintained sheet with a blank cell or two
-    # shouldn't crash every model, including the guaranteed Linear
-    # fallback, which needs plain floats.
     values, span = _clean_series(raw_values)
     if values is None:
         raise ValueError("Not enough data to forecast this parameter yet (fewer than 3 usable points).")
+
     first, last = span
     labels = raw_labels[first:last + 1]
-    x_hist = series["years"][first:last + 1] if (not monthly and series.get("years")) else list(range(len(values)))
+
+    x_hist = (
+        series["years"][first:last + 1]
+        if (not monthly and series.get("years"))
+        else list(range(len(values)))
+    )
 
     if monthly:
         pred_labels = [f"+{i} mo" for i in range(1, n_ahead + 1)]
@@ -1403,29 +1724,47 @@ def run_forecast(param_key: str, model: str, n_ahead: int, monthly: bool = False
     else:
         pred_labels = [f"FY+{i}" for i in range(1, n_ahead + 1)]
 
-    pred, meta, lo, hi, fitted = _run_single_model(model, x_hist, values, n_ahead, monthly, season_length)
-    meta = {**meta, **_fit_metrics(values, fitted)}
-
-    return ForecastResult(
-        past_labels=labels, past_values=[float(v) for v in values],
-        base_label=labels[-1], base_value=float(values[-1]),
-        pred_labels=pred_labels, pred_values=pred,
-        pred_lo=lo, pred_hi=hi, meta=meta,
+    pred, meta, lo, hi, fitted = _run_single_model(
+        model, x_hist, values, n_ahead, monthly, season_length
     )
 
+    constraints = _forecast_constraints(param_key, series.get("unit", ""), values)
+    pred, lo, hi = _apply_forecast_constraints(pred, lo, hi, constraints)
 
-# ══════════════════════════════════════════════════════════════════════
-#  COMPOSITE (STACKED / MULTI-COMPONENT) FORECASTING
-#
-#  For a parameter that's really made of several categories that sum
-#  to a total — Consumers by Category, Revenue by Consumer Category,
-#  the annual Generation Mix (NEA Own / NEA Subsidiary / IPP / India
-#  Import), and the monthly Energy Mix — the Forecast Lab shouldn't
-#  just forecast the aggregate as one line. It forecasts EACH component
-#  series independently (own model fit, own confidence band, own
-#  accuracy stats) and then stacks the forecasted components, so the
-#  final "scenario" is a real stacked chart, not a single blended line.
-# ══════════════════════════════════════════════════════════════════════
+    meta.update(_fit_metrics_with_backtest(
+        model, values, fitted, monthly, season_length
+    ))
+
+    # Explicitly expose the base/first-forecast relationship to the frontend.
+    base_value = float(values[-1])
+    first_forecast = float(pred[0])
+    first_delta = first_forecast - base_value
+    first_pct = (first_delta / abs(base_value) * 100.0) if base_value != 0 else None
+
+    meta.update({
+        "base_year": labels[-1],
+        "base_value": base_value,
+        "first_forecast_period": pred_labels[0],
+        "first_forecast_value": first_forecast,
+        "first_forecast_change": round(first_delta, 6),
+        "first_forecast_change_pct": round(first_pct, 4) if first_pct is not None else None,
+        "forecast_is_genuine": True,
+        "forecast_horizon": n_ahead,
+        "constraints_applied": constraints,
+    })
+
+    return ForecastResult(
+        past_labels=labels,
+        past_values=[float(v) for v in values],
+        base_label=labels[-1],
+        base_value=base_value,
+        pred_labels=pred_labels,
+        pred_values=pred,
+        pred_lo=lo,
+        pred_hi=hi,
+        meta=meta,
+    )
+
 
 def _annual_composite_defs() -> dict:
     """Stack-able annual parameter groups, sourced from the same live
@@ -1521,7 +1860,7 @@ def composite_param_choices():
     group — the composite forecast fits the same requested model to
     each component, so a model only belongs on this dropdown if it
     will actually run for all of them, not just some."""
-    _ORDER = ["linear", "holt", "moving", "arima", "hybrid", "sarima"]
+    _ORDER = ["linear", "moving", "holt", "damped_holt", "arima", "theta", "hybrid", "ensemble", "sarima"]
 
     def _group_models(v):
         common = None
@@ -1578,14 +1917,11 @@ def run_composite_forecast(composite_key: str, model: str, n_ahead: int) -> dict
     agg_pred = [0.0] * n_ahead
     agg_lo = [0.0] * n_ahead
     agg_hi = [0.0] * n_ahead
-    agg_base = 0.0  # sum of each fitted component's own last actual value —
-    # this is what agg_pred[0] is anchored to (see _run_single_model's
-    # CONTINUITY CORRECTION), so bridging history→forecast with agg_base
-    # instead of the separately-reported Total column guarantees the join
-    # is exactly continuous, even when the reported Total doesn't equal
-    # the raw sum of these specific components (different definition/
-    # rounding/an extra source not broken out here) — that mismatch is
-    # exactly what was causing a visible spike at the seam.
+    # Sum of each successfully fitted component's last actual value.
+    # IMPORTANT: this is only the composite base value. The first aggregate
+    # forecast is NOT forced to equal agg_base. Each component contributes
+    # its genuine first model forecast, so the aggregate can legitimately
+    # move away from the base year in the first forecast period.
     have_ci = False
 
     for comp in cdef["components"]:
