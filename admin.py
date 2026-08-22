@@ -21,6 +21,7 @@ import server_state as ss
 import data_engine as de
 import NEA
 import transmission_network as tn
+import security
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -421,9 +422,16 @@ power type, license stage, and province.
 def login():
     error = None
     if request.method == "POST":
-        if request.form.get("password") == ADMIN_PASSWORD:
+        locked, retry_after = security.is_login_locked_out()
+        if locked:
+            error = f"Too many failed attempts. Try again in {retry_after // 60 + 1} min."
+            return render_template_string(LOGIN_TEMPLATE, error=error), 429
+        if security.safe_password_check(request.form.get("password"), ADMIN_PASSWORD):
+            security.clear_login_attempts()
+            session.permanent = True
             session["admin_logged_in"] = True
             return redirect(url_for("admin.index"))
+        security.record_failed_login()
         error = "Invalid password"
     return render_template_string(LOGIN_TEMPLATE, error=error)
 
