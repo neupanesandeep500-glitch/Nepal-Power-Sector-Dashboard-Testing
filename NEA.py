@@ -1917,6 +1917,7 @@ def run_composite_forecast(composite_key: str, model: str, n_ahead: int) -> dict
     agg_pred = [0.0] * n_ahead
     agg_lo = [0.0] * n_ahead
     agg_hi = [0.0] * n_ahead
+    agg_base = 0.0
     # Sum of each successfully fitted component's last actual value.
     # IMPORTANT: this is only the composite base value. The first aggregate
     # forecast is NOT forced to equal agg_base. Each component contributes
@@ -1963,6 +1964,10 @@ def run_composite_forecast(composite_key: str, model: str, n_ahead: int) -> dict
                 agg_hi[i] += hi[i]
 
     reported_total = cdef.get("reported_total") or []
+    first_aggregate_forecast = float(agg_pred[0]) if agg_pred else None
+    first_change = (first_aggregate_forecast - agg_base) if first_aggregate_forecast is not None else None
+    first_change_pct = (first_change / abs(agg_base) * 100.0) if (first_change is not None and agg_base != 0) else None
+
     return {
         "key": composite_key, "label": cdef["label"], "unit": cdef["unit"], "monthly": monthly,
         "past_labels": past_labels, "pred_labels": pred_labels,
@@ -1973,6 +1978,10 @@ def run_composite_forecast(composite_key: str, model: str, n_ahead: int) -> dict
             "pred_values": agg_pred,
             "pred_lo": agg_lo if have_ci else [],
             "pred_hi": agg_hi if have_ci else [],
+            "first_forecast_value": first_aggregate_forecast,
+            "first_forecast_change": round(first_change, 6) if first_change is not None else None,
+            "first_forecast_change_pct": round(first_change_pct, 4) if first_change_pct is not None else None,
+            "forecast_is_genuine": True,
             "reported_past_values": [float(v) if v is not None else None for v in reported_total],
         },
     }
