@@ -89,6 +89,7 @@ DEFAULT_SHEET_URL = os.environ.get("NEA_SHEET_URL", _PLACEHOLDER_SHEET_URL)
 CACHE_WORKBOOK_PATH = os.path.join(_HERE, "nea_workbook_cache.xlsx")
 TEMPLATE_PATH = os.path.join(_HERE, "nea_assets", "nea_operational_dashboard_template.html")
 FORECAST_TEMPLATE_PATH = os.path.join(_HERE, "nea_assets", "nea_forecast_lab_template.html")
+SCENARIO_TEMPLATE_PATH = os.path.join(_HERE, "nea_assets", "scenario_analysis_template.html")
 AUTO_REFRESH_HOURS = float(os.environ.get("NEA_AUTO_REFRESH_HOURS", "6"))
 
 # Sheet URL entered via the /admin panel is persisted here so it survives a
@@ -876,6 +877,79 @@ def render_forecast_lab_html(style: dict = None) -> str:
         template = f.read()
     style_json = json.dumps(style or _DEFAULT_NEA_STYLE)
     return template.replace("__NEA_STYLE_JSON__", style_json)
+def render_scenario_analysis_html(style: dict = None) -> str:
+    """Scenario Analysis tab: static HTML/JS (Chart.js, same pattern as
+    the Forecast Lab) that pulls its baseline figures live from
+    /api/scenario-baseline (see app.py) — only the Custom Style payload
+    needs injecting here, not any dashboard data."""
+    with open(SCENARIO_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        template = f.read()
+    style_json = json.dumps(style or _DEFAULT_NEA_STYLE)
+    return template.replace("__NEA_STYLE_JSON__", style_json)
+
+
+def scenario_baseline_data() -> dict:
+    """Baseline figures + trailing growth rates for the Scenario Analysis
+    tab, built from the exact same live dashboard cache (i.e. the same
+    Google Sheet) as every other NEA tab. Returns {} if no workbook has
+    ever synced successfully — the front-end template falls back to
+    illustrative placeholder numbers in that case, same as the rest of
+    this dashboard degrades gracefully when the sheet is unavailable."""
+    d = get_dashboard_data()
+    if not d:
+        return {}
+
+    ae = d.get("annualEnergy", {}) or {}
+    fin = d.get("financial", {}) or {}
+    ss = d.get("substation", {}) or {}
+    tx = d.get("transmission", {}) or {}
+
+    def _clean(series):
+        return [v for v in (series or []) if isinstance(v, (int, float))]
+
+    def _last(series, default=0):
+        vals = _clean(series)
+        return vals[-1] if vals else default
+
+    def _cagr(series, years_back=5, default=0.09):
+        vals = _clean(series)
+        if len(vals) < 2:
+            return default
+        n = min(years_back, len(vals) - 1)
+        start, end = vals[-1 - n], vals[-1]
+        if not start or start <= 0 or n <= 0:
+            return default
+        try:
+            return round((end / start) ** (1 / n) - 1, 4)
+        except (ValueError, ZeroDivisionError):
+            return default
+
+    years = ae.get("years") or []
+    latest_year = years[-1] if years else None
+
+    total_avail = _last(ae.get("total"))
+    export_gwh = _last(fin.get("export_mu")) or 0
+    import_gwh = _last(fin.get("import_mu")) or 0
+    domestic_energy = max(total_avail - export_gwh, 0) if total_avail else 0
+
+    return {
+        "latestYear": latest_year,
+        "peakDemandMW": _last(ae.get("national_peak")),
+        "totalAvailabilityGWh": total_avail,
+        "domesticEnergyGWh": domestic_energy,
+        "exportGWh": export_gwh,
+        "importGWh": import_gwh,
+        "revenueRsMillion": _last(fin.get("revenue")),
+        "profitLossRsMillion": _last(fin.get("profit_loss")),
+        "exportRsMillion": _last(fin.get("export_rs")),
+        "importRsMillion": _last(fin.get("import_rs")),
+        "substationCapacityMVA": _last(ss.get("capacity")),
+        "transmissionCktKm": _last(tx.get("total")),
+        "demandGrowthCagr": _cagr(ae.get("national_peak"), 5, 0.09),
+        "availabilityGrowthCagr": _cagr(ae.get("total"), 5, 0.10),
+    }
+
+
 def forecast_result_to_dict(fr: "ForecastResult") -> dict:
     """JSON-serializable shape for a ForecastResult, used by the
     /api/nea-forecast endpoint."""
