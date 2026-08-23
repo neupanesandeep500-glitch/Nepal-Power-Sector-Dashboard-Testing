@@ -639,14 +639,19 @@ def nea_forecast_lab_page():
 @server.route("/scenario-analysis")
 def scenario_analysis_page():
     try:
-        return NEA.render_scenario_analysis_html(style=_nea_style_payload())
-    except Exception:
-        app_logger.exception("Scenario Analysis page failed to render")
-        return security.render_friendly_error(
-            "Scenario Analysis temporarily unavailable",
-            "The scenario analysis tool couldn't be rendered right now. "
-            "The issue has been logged — please try again shortly.")
+        return NEA.render_scenario_analysis_html(
+            style=_nea_style_payload()
+        )
 
+    except Exception as exc:
+        app_logger.exception(
+            "Scenario Analysis page failed to render"
+        )
+
+        return (
+            f"<h1>Scenario Analysis Error</h1>"
+            f"<pre>{type(exc).__name__}: {exc}</pre>"
+        ), 500
 
 @server.route("/api/scenario-baseline")
 def api_scenario_baseline():
