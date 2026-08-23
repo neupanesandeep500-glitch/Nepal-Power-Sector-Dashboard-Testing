@@ -656,11 +656,20 @@ def scenario_analysis_page():
 @server.route("/api/scenario-baseline")
 def api_scenario_baseline():
     from flask import jsonify
+
     try:
-        return jsonify(NEA.scenario_baseline_data())
-    except Exception:
-        traceback.print_exc()
-        return jsonify({}), 200
+        data = NEA.scenario_baseline_data()
+        return jsonify(data)
+
+    except Exception as exc:
+        app_logger.exception(
+            "Scenario baseline API failed"
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": str(exc)
+        }), 500
 
 
 @server.route("/transmission-network-map")
