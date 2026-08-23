@@ -636,6 +636,28 @@ def nea_forecast_lab_page():
             "The issue has been logged — please try again shortly.")
 
 
+@server.route("/scenario-analysis")
+def scenario_analysis_page():
+    try:
+        return NEA.render_scenario_analysis_html(style=_nea_style_payload())
+    except Exception:
+        app_logger.exception("Scenario Analysis page failed to render")
+        return security.render_friendly_error(
+            "Scenario Analysis temporarily unavailable",
+            "The scenario analysis tool couldn't be rendered right now. "
+            "The issue has been logged — please try again shortly.")
+
+
+@server.route("/api/scenario-baseline")
+def api_scenario_baseline():
+    from flask import jsonify
+    try:
+        return jsonify(NEA.scenario_baseline_data())
+    except Exception:
+        traceback.print_exc()
+        return jsonify({}), 200
+
+
 @server.route("/transmission-network-map")
 def transmission_network_map():
     try:
@@ -1031,6 +1053,7 @@ app.layout = dbc.Container(fluid=True, children=[
         dbc.Tab(label="🔌 Transmission Network", tab_id="transmission_network"),
         dbc.Tab(label="🏭 System Operational Performance", tab_id="nea_operational"),
         dbc.Tab(label="🔬 Forecast Lab", tab_id="nea_forecast"),
+        dbc.Tab(label="🧭 Scenario Analysis", tab_id="scenario_analysis"),
         dbc.Tab(label="🎨 Custom Style", tab_id="custom"),
         dbc.Tab(label="📝 Generate Report", tab_id="reports"),
     ]),
@@ -1444,6 +1467,10 @@ def render_tab(tab, f_type, f_status, f_province, f_capacity, f_tx_length, f_yea
     if tab == "nea_forecast":
         return (html.Iframe(src=f"/nea-forecast-lab?v={style_v}",
                              style={"width": "100%", "height": "900px", "border": "none"}),
+                gis_controls_style, sidebar_style, sidebar_md, content_md)
+    if tab == "scenario_analysis":
+        return (html.Iframe(src=f"/scenario-analysis?v={style_v}",
+                             style={"width": "100%", "height": "2100px", "border": "none"}),
                 gis_controls_style, sidebar_style, sidebar_md, content_md)
 
     # Reports tab: just an options panel + a button — doesn't need license
