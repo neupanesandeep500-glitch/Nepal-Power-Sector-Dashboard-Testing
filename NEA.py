@@ -878,14 +878,30 @@ def render_forecast_lab_html(style: dict = None) -> str:
     style_json = json.dumps(style or _DEFAULT_NEA_STYLE)
     return template.replace("__NEA_STYLE_JSON__", style_json)
 def render_scenario_analysis_html(style: dict = None) -> str:
-    """Scenario Analysis tab: static HTML/JS (Chart.js, same pattern as
-    the Forecast Lab) that pulls its baseline figures live from
-    /api/scenario-baseline (see app.py) — only the Custom Style payload
-    needs injecting here, not any dashboard data."""
-    with open(SCENARIO_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+    """Render Scenario Analysis template safely."""
+
+    if not os.path.isfile(SCENARIO_TEMPLATE_PATH):
+        raise FileNotFoundError(
+            f"Scenario Analysis template not found: "
+            f"{SCENARIO_TEMPLATE_PATH}"
+        )
+
+    with open(
+        SCENARIO_TEMPLATE_PATH,
+        "r",
+        encoding="utf-8"
+    ) as f:
         template = f.read()
-    style_json = json.dumps(style or _DEFAULT_NEA_STYLE)
-    return template.replace("__NEA_STYLE_JSON__", style_json)
+
+    style_json = json.dumps(
+        style or _DEFAULT_NEA_STYLE,
+        ensure_ascii=False
+    )
+
+    return template.replace(
+        "__NEA_STYLE_JSON__",
+        style_json
+    )
 
 
 def scenario_baseline_data() -> dict:
