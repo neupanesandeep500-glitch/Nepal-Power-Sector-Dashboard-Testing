@@ -919,6 +919,8 @@ def scenario_baseline_data() -> dict:
     fin = d.get("financial", {}) or {}
     ss = d.get("substation", {}) or {}
     tx = d.get("transmission", {}) or {}
+    sl = d.get("systemLoss", {}) or {}
+    cons = d.get("consumers", {}) or {}
 
     def _clean(series):
         return [v for v in (series or []) if isinstance(v, (int, float))]
@@ -948,6 +950,33 @@ def scenario_baseline_data() -> dict:
     import_gwh = _last(fin.get("import_mu")) or 0
     domestic_energy = max(total_avail - export_gwh, 0) if total_avail else 0
 
+    # System loss (%) — prefer the "system" (transmission + distribution
+    # combined) series; fall back to summing transmission + distribution
+    # if only those are populated. Default mirrors NEA's recent actuals
+    # so the scenario model degrades sensibly even without a live sheet.
+    system_loss_series = sl.get("system") or []
+    if not _clean(system_loss_series):
+        t = _last(sl.get("transmission"), None)
+        dloss = _last(sl.get("distribution"), None)
+        system_loss_series = [
+            (t or 0) + (dloss or 0)
+        ] if (t is not None or dloss is not None) else []
+    latest_system_loss_pct = _last(system_loss_series, 12.5)
+
+    # Trailing improvement (percentage points shaved off per year, positive
+    # = loss reduction). Used as a default glide-path assumption.
+    clean_loss = _clean(system_loss_series)
+    if len(clean_loss) >= 2:
+        n_back = min(5, len(clean_loss) - 1)
+        loss_improvement_pp_per_yr = round(
+            (clean_loss[-1 - n_back] - clean_loss[-1]) / n_back, 3
+        )
+    else:
+        loss_improvement_pp_per_yr = 0.3
+
+    total_consumers = _last(cons.get("total"))
+    consumer_growth_cagr = _cagr(cons.get("total"), 5, 0.07)
+
     return {
         "latestYear": latest_year,
         "peakDemandMW": _last(ae.get("national_peak")),
@@ -963,6 +992,10 @@ def scenario_baseline_data() -> dict:
         "transmissionCktKm": _last(tx.get("total")),
         "demandGrowthCagr": _cagr(ae.get("national_peak"), 5, 0.09),
         "availabilityGrowthCagr": _cagr(ae.get("total"), 5, 0.10),
+        "systemLossPct": latest_system_loss_pct,
+        "systemLossImprovementPpPerYear": loss_improvement_pp_per_yr,
+        "totalConsumers": total_consumers,
+        "consumerGrowthCagr": consumer_growth_cagr,
     }
 
 
