@@ -664,19 +664,20 @@ function renderSingle(paramLabel, data) {
 /* ---------- render: composite / stacked parameter ---------- */
 
 function renderComposite(data) {
-  updateForecastInfo({
-    base_label: data.base_label,
-    base_value: data.base_value,
-    pred_labels: data.pred_labels,
-    pred_values: data.aggregate && data.aggregate.pred_values,
-    meta: data.aggregate && data.aggregate.meta
-      ? data.aggregate.meta
-      : { model: "Composite / component ensemble" }
-  });
-
   const pastLabels = data.past_labels, predLabels = data.pred_labels;
   const nPast = pastLabels.length, nPred = predLabels.length;
   const allLabels = pastLabels.concat(predLabels);
+
+  updateForecastInfo({
+    base_label: pastLabels.length ? pastLabels[pastLabels.length - 1] : "—",
+    base_value: data.aggregate ? data.aggregate.base_value : null,
+    pred_labels: data.pred_labels,
+    pred_values: data.aggregate && data.aggregate.pred_values,
+    meta: {
+      model: "Composite / component ensemble (sum of forecasted components)",
+      forecast_is_genuine: !!(data.aggregate && data.aggregate.forecast_is_genuine),
+    }
+  });
 
   // ---- stats table: one row per component, plus the summed total ----
   const rows = data.components.map(c => ({
@@ -741,23 +742,32 @@ function renderComposite(data) {
   // produced one (currently: arima/sarima)
   const aggPred = data.aggregate.pred_values || [];
   if (aggPred.length) {
-    // The seam point is simply the base year value — nothing added,
-    // nothing summed. aggregate.pred_values[0] is already anchored
-    // server-side to equal this same base value (see _run_single_model's
-    // continuity correction in NEA.py), so the line drawn here is just a
-    // straight connection from the base year value to the first
-    // forecasted year, then on through the rest of the forecast.
-    // The aggregate forecast starts at the first future period.
-    // Do not insert/duplicate the base value into the forecast series.
-    const sumLine = Array(nPast).fill(null).concat(aggPred);
+    // aggregate.pred_values[0] is the genuine first-period forecast — the
+    // backend no longer anchors it to the base value (see NEA.py's
+    // run_composite_forecast / _run_single_model). For VISUAL CONTINUITY
+    // ONLY, the line inserts the base value as a seam point at the last
+    // historical x-index, exactly like singleSeriesChartConfig does for
+    // the single-parameter chart, then connects on to the genuine
+    // forecast values. Without this seam point the line would have a
+    // null gap at the join and render as a disconnected floating segment.
+    const bridge = (data.aggregate.base_value != null) ? data.aggregate.base_value : null;
+    const sumLine = Array(Math.max(0, nPast - 1)).fill(null)
+      .concat([bridge])
+      .concat(aggPred);
     datasets.push({
       type: "line", label: "Forecast Total (sum of components)", stack: "line-forecast-total",
       data: sumLine, borderColor: "#c62828", backgroundColor: "#c62828",
       borderWidth: 2.5, borderDash: [6, 3], pointRadius: 3, tension: 0, order: 0,
     });
     if (data.aggregate.pred_lo && data.aggregate.pred_lo.length && data.aggregate.pred_hi && data.aggregate.pred_hi.length) {
-      const loLine = Array(nPast).fill(null).concat(data.aggregate.pred_lo);
-      const hiLine = Array(nPast).fill(null).concat(data.aggregate.pred_hi);
+      // Same seam bridge for the CI band — the actual band values remain
+      // pred_lo[0]/pred_hi[0]; `bridge` is only the visual anchor point.
+      const loLine = Array(Math.max(0, nPast - 1)).fill(null)
+        .concat([bridge])
+        .concat(data.aggregate.pred_lo);
+      const hiLine = Array(Math.max(0, nPast - 1)).fill(null)
+        .concat([bridge])
+        .concat(data.aggregate.pred_hi);
       datasets.push({ type: "line", label: "Upper (80% CI, total)", stack: "line-ci-upper", data: hiLine, borderColor: "rgba(198,40,40,0)", backgroundColor: "rgba(198,40,40,0.14)", fill: "+1", pointRadius: 0, borderWidth: 0, order: 1 });
       datasets.push({ type: "line", label: "Lower (80% CI, total)", stack: "line-ci-lower", data: loLine, borderColor: "rgba(198,40,40,0)", backgroundColor: "rgba(198,40,40,0.14)", fill: false, pointRadius: 0, borderWidth: 0, order: 1 });
     }
