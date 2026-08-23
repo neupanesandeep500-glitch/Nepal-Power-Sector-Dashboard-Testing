@@ -2796,15 +2796,15 @@ def _stage_flip_card_only(n, recs, is_transmission=False):
     Output("plants-stage-flip-card", "children"),
     Output("plants-stage-flip-frame", "style"),
     Output("plants-stage-flip-heading", "style"),
-    Input("type-flip-interval", "n_intervals"),
-    State("f-type", "value"), State("f-status", "value"), State("f-province", "value"),
-    State("f-capacity", "value"), State("f-tx-length", "value"), State("f-year", "data"),
-    State("f-search", "value"),
-    State("f-date-from", "value"), State("f-date-to", "value"),
-    State("f-cod-from", "value"), State("f-cod-to", "value"),
-    State("f-district", "value"), State("f-local", "value"),
+    Input("plants-stage-next-btn", "n_clicks"),
+    Input("f-type", "value"), Input("f-status", "value"), Input("f-province", "value"),
+    Input("f-capacity", "value"), Input("f-tx-length", "value"), Input("f-year", "data"),
+    Input("f-search", "value"),
+    Input("f-date-from", "value"), Input("f-date-to", "value"),
+    Input("f-cod-from", "value"), Input("f-cod-to", "value"),
+    Input("f-district", "value"), Input("f-local", "value"),
 )
-def flip_plants_stage_card(n, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
+def flip_plants_stage_card(n_clicks, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
                             f_search, f_date_from, f_date_to, f_cod_from, f_cod_to,
                             f_district, f_local):
     loader = STATE["loader"]
@@ -2815,7 +2815,10 @@ def flip_plants_stage_card(n, f_type, f_status, f_province, f_capacity, f_tx_len
                                  f_district, f_local)
     plant_recs = [r for r in recs if r["type"] != "Transmission Line"
                   and r["status"] not in de.EXTRA_STATUS_ORDER]
-    card, bg_url = _stage_flip_card_only(n, plant_recs)
+    # Only the "Next →" button advances the step; a filter change re-renders
+    # at the same step (safely wrapped by len() inside _stage_flip_card_only)
+    # so the card always matches the current filter selection.
+    card, bg_url = _stage_flip_card_only(n_clicks or 0, plant_recs)
     return card, flip_frame_style(), flip_heading_style(bg_url)
 
 
@@ -2824,15 +2827,15 @@ def flip_plants_stage_card(n, f_type, f_status, f_province, f_capacity, f_tx_len
     Output("tx-stage-flip-card", "children"),
     Output("tx-stage-flip-frame", "style"),
     Output("tx-stage-flip-heading", "style"),
-    Input("type-flip-interval", "n_intervals"),
-    State("f-type", "value"), State("f-status", "value"), State("f-province", "value"),
-    State("f-capacity", "value"), State("f-tx-length", "value"), State("f-year", "data"),
-    State("f-search", "value"),
-    State("f-date-from", "value"), State("f-date-to", "value"),
-    State("f-cod-from", "value"), State("f-cod-to", "value"),
-    State("f-district", "value"), State("f-local", "value"),
+    Input("tx-stage-next-btn", "n_clicks"),
+    Input("f-type", "value"), Input("f-status", "value"), Input("f-province", "value"),
+    Input("f-capacity", "value"), Input("f-tx-length", "value"), Input("f-year", "data"),
+    Input("f-search", "value"),
+    Input("f-date-from", "value"), Input("f-date-to", "value"),
+    Input("f-cod-from", "value"), Input("f-cod-to", "value"),
+    Input("f-district", "value"), Input("f-local", "value"),
 )
-def flip_tx_stage_card(n, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
+def flip_tx_stage_card(n_clicks, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
                         f_search, f_date_from, f_date_to, f_cod_from, f_cod_to,
                         f_district, f_local):
     loader = STATE["loader"]
@@ -2843,7 +2846,7 @@ def flip_tx_stage_card(n, f_type, f_status, f_province, f_capacity, f_tx_length,
                                  f_district, f_local)
     tx_recs = [r for r in recs if r["type"] == "Transmission Line"
                and r["status"] not in de.EXTRA_STATUS_ORDER]
-    card, bg_url = _stage_flip_card_only(n, tx_recs, is_transmission=True)
+    card, bg_url = _stage_flip_card_only(n_clicks or 0, tx_recs, is_transmission=True)
     return card, flip_frame_style(), flip_heading_style(bg_url)
 
 
@@ -2857,14 +2860,27 @@ def render_plants_tab(loader, recs):
     stages_present = [s for s in STAGE_DISPLAY_ORDER if s in stage_totals]
 
     # REQ 3: Consistent pattern with styled status labels
+    # CSS Grid with fixed column widths (same pattern as the Transmission
+    # tab's equivalent list below) — plain flexbox `justify-content-between`
+    # only pins the first/last span and free-floats everything in between,
+    # so with labels of different lengths per stage the numbers land in a
+    # different horizontal position on every row ("zigzag"). A grid keeps
+    # every column's data lined up under its own header regardless of how
+    # long the stage name or the numbers happen to be.
     stage_rows = []
     for st in stages_present:
         color_cls = get_status_color_class(st)
         stage_rows.append(html.Div([
             html.Span(st, className=f"fw-semibold {color_cls}"),
-            html.Span(f"{stage_totals[st][0]:,} Projects", className="text-muted mx-3"),
-            html.Span(f"{stage_totals[st][1]:,.1f} MW", className="fw-semibold float-end"),
-        ], className="d-flex justify-content-between border-bottom py-2"))
+            html.Span(f"{stage_totals[st][0]:,} Projects", className="text-muted",
+                      style={"textAlign": "center"}),
+            html.Span(f"{stage_totals[st][1]:,.1f} MW", className="fw-semibold",
+                      style={"textAlign": "right"}),
+        ], className="border-bottom py-2", style={
+            "display": "grid",
+            "gridTemplateColumns": "2fr 1fr 1fr",
+            "alignItems": "center",
+        }))
 
     colors = [get_status_colors().get(s, "#90a4ae") for s in stages_present]
     mw_values = [stage_totals[s][1] for s in stages_present]
@@ -2896,6 +2912,12 @@ def render_plants_tab(loader, recs):
     # Stage flip card (animated card only) + static full stage-breakdown
     # chart alongside it. The chart no longer flips/rescales every tick —
     # it's the same stable fig_stage comparison used below.
+    #
+    # NOTE: unlike the Overview tab, this card does NOT auto-flip on a
+    # timer — it only advances when the "Next →" button below it is
+    # clicked, and it re-renders immediately (frozen on the current
+    # step) whenever a filter changes, so what's shown always matches
+    # the current filter selection. See flip_plants_stage_card().
     stage_card0, stage_bg0 = _stage_flip_card_only(0, plant_recs)
     stage_flip_row = html.Div([
         html.Div(html.H5("⚡ License Stage ", className="m-0"),
@@ -2908,6 +2930,11 @@ def render_plants_tab(loader, recs):
                                   style={"height": "auto", "minHeight": "360px"}), md=5),
                 dbc.Col(dcc.Graph(figure=fig_stage, style={"height": "360px"}), md=7),
             ]),
+        ),
+        html.Div(
+            dbc.Button("Next →", id="plants-stage-next-btn", color="primary",
+                       outline=True, size="sm", n_clicks=0),
+            className="text-center mt-2",
         ),
     ])
 
@@ -2950,6 +2977,10 @@ def render_plants_tab(loader, recs):
 
     # Province flip card (animated card only) — the chart alongside it is
     # the same stable fig_prov comparison, not a per-tick chart.
+    #
+    # NOTE: same manual-advance-only behavior as the License Stage card
+    # above — no timer, "Next →" click only, immediate re-render on
+    # filter change. See flip_province_card().
     prov_card, prov_bg_url = _province_flip_card_only(0, plant_recs)
 
     # REQ 8: Animated province slide section — background photo on heading only
@@ -2964,6 +2995,11 @@ def render_plants_tab(loader, recs):
                                   style={"height": "auto", "minHeight": "360px"}), md=5),
                 dbc.Col(dcc.Graph(figure=fig_prov, style={"height": "360px"}), md=7),
             ]),
+        ),
+        html.Div(
+            dbc.Button("Next →", id="province-next-btn", color="primary",
+                       outline=True, size="sm", n_clicks=0),
+            className="text-center mt-2",
         ),
     ])
 
@@ -3009,15 +3045,15 @@ def _province_flip_card_only(n, recs):
     Output("province-flip-card", "children"),
     Output("province-flip-frame", "style"),
     Output("province-flip-heading", "style"),
-    Input("province-flip-interval", "n_intervals"),
-    State("f-type", "value"), State("f-status", "value"), State("f-province", "value"),
-    State("f-capacity", "value"), State("f-tx-length", "value"), State("f-year", "data"),
-    State("f-search", "value"),
-    State("f-date-from", "value"), State("f-date-to", "value"),
-    State("f-cod-from", "value"), State("f-cod-to", "value"),
-    State("f-district", "value"), State("f-local", "value"),
+    Input("province-next-btn", "n_clicks"),
+    Input("f-type", "value"), Input("f-status", "value"), Input("f-province", "value"),
+    Input("f-capacity", "value"), Input("f-tx-length", "value"), Input("f-year", "data"),
+    Input("f-search", "value"),
+    Input("f-date-from", "value"), Input("f-date-to", "value"),
+    Input("f-cod-from", "value"), Input("f-cod-to", "value"),
+    Input("f-district", "value"), Input("f-local", "value"),
 )
-def flip_province_card(n, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
+def flip_province_card(n_clicks, f_type, f_status, f_province, f_capacity, f_tx_length, f_year,
                         f_search, f_date_from, f_date_to, f_cod_from, f_cod_to,
                         f_district, f_local):
     loader = STATE["loader"]
@@ -3028,7 +3064,7 @@ def flip_province_card(n, f_type, f_status, f_province, f_capacity, f_tx_length,
                                  f_district, f_local)
     plant_recs = [r for r in recs if r["type"] != "Transmission Line"
                   and r["status"] not in de.EXTRA_STATUS_ORDER]
-    card, bg_url = _province_flip_card_only(n, plant_recs)
+    card, bg_url = _province_flip_card_only(n_clicks or 0, plant_recs)
     return card, flip_frame_style(), flip_heading_style(bg_url)
 
 
@@ -3104,9 +3140,10 @@ def render_transmission_tab(loader, recs):
     fig_stage = _apply_secondary_axis_setting(fig_stage)
     add_watermark(fig_stage)
 
-    # REQ 9: No flipping when filter is applied in Transmission tab
-    # We keep the stage flip card but it won't auto-flip when filtered
-    # The flip callback still works but user can also see static view
+    # No auto-flip on this tab — the card only advances via the "Next →"
+    # button below it, and re-renders immediately on any filter change
+    # (see flip_tx_stage_card()), so it always reflects the current
+    # filter selection rather than cycling on a timer.
     tx_card0, tx_bg0 = _stage_flip_card_only(0, tx_recs, is_transmission=True)
     stage_flip_row = html.Div([
         html.Div(html.H5("🔌 License Stage ", className="m-0"),
@@ -3119,6 +3156,11 @@ def render_transmission_tab(loader, recs):
                                   style={"height": "auto", "minHeight": "360px"}), md=5),
                 dbc.Col(dcc.Graph(figure=fig_stage, style={"height": "360px"}), md=7),
             ]),
+        ),
+        html.Div(
+            dbc.Button("Next →", id="tx-stage-next-btn", color="primary",
+                       outline=True, size="sm", n_clicks=0),
+            className="text-center mt-2",
         ),
     ])
 
@@ -3136,15 +3178,25 @@ def render_transmission_tab(loader, recs):
             v[2] += r["capacity_mw"] or 0
     volts = sorted(by_volt.keys())
 
-    # REQ 3: Consistent KM pattern
+    # REQ 3: Consistent KM pattern — CSS Grid, same reasoning as the
+    # License Stage list above: fixed columns keep every row's Projects/
+    # KM/MW numbers lined up under each other instead of drifting
+    # left/right depending on how long the voltage-class label is.
     volt_rows = []
     for v in volts:
         volt_rows.append(html.Div([
             html.Span(f"{v:.0f} kV", className="fw-semibold"),
-            html.Span(f"{by_volt[v][0]:,} Projects", className="text-muted mx-2"),
-            html.Span(f"{by_volt[v][1]:,.0f} KM", className="text-muted mx-2"),
-            html.Span(f"{by_volt[v][2]:,.1f} MW", className="fw-semibold float-end"),
-        ], className="d-flex justify-content-between border-bottom py-2"))
+            html.Span(f"{by_volt[v][0]:,} Projects", className="text-muted",
+                      style={"textAlign": "center"}),
+            html.Span(f"{by_volt[v][1]:,.0f} KM", className="text-muted",
+                      style={"textAlign": "center"}),
+            html.Span(f"{by_volt[v][2]:,.1f} MW", className="fw-semibold",
+                      style={"textAlign": "right"}),
+        ], className="border-bottom py-2", style={
+            "display": "grid",
+            "gridTemplateColumns": "1.3fr 1fr 1fr 1fr",
+            "alignItems": "center",
+        }))
 
     volt_km_values = [by_volt[v][1] for v in volts]
     volt_cum_km = _cumsum(volt_km_values)
@@ -3564,6 +3616,13 @@ def render_table(recs, f_crs=None):
         "district": "120px", "province": "100px", "promoter": "180px",
         "lat_disp": "110px", "lon_disp": "110px", "loc_source": "130px",
     }
+    # Numeric columns are right-aligned (so digits stack on the ones place —
+    # left-aligning numbers of different widths is what produces the
+    # "zigzag" look); everything else stays left-aligned. Headers match
+    # their own column's alignment instead of all being centered, so the
+    # header row lines up with the data underneath it rather than looking
+    # like a separate, misaligned row.
+    numeric_cols = {"capacity_mw", "voltage_kv", "line_length_km", "lat_disp", "lon_disp"}
 
     return html.Div([
         dash_table.DataTable(
@@ -3595,7 +3654,7 @@ def render_table(recs, f_crs=None):
                 "backgroundColor": "#f8f9fa",
                 "color": "#495057",
                 "border": "1px solid #dee2e6",
-                "textAlign": "center",
+                "textAlign": "left",
                 "padding": "10px 12px",
                 "fontSize": "13px",
                 "whiteSpace": "normal",
@@ -3613,8 +3672,13 @@ def render_table(recs, f_crs=None):
                 },
             ],
             style_cell_conditional=[
-                {"if": {"column_id": c}, "minWidth": w, "width": w, "maxWidth": w}
+                {"if": {"column_id": c}, "minWidth": w, "width": w, "maxWidth": w,
+                 "textAlign": "right" if c in numeric_cols else "left"}
                 for c, w in col_widths.items()
+            ],
+            style_header_conditional=[
+                {"if": {"column_id": c}, "textAlign": "right" if c in numeric_cols else "left"}
+                for c in col_widths
             ],
         ),
         html.Div([
