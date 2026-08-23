@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif; background:#f4f7fb; color:#20293a; }
+  .wrap { padding:16px 18px 40px; max-width:1180px; margin:0 auto; }
+  .panel { background:#fff; border-radius:12px; padding:16px 18px; margin-bottom:16px; box-shadow:0 1px 4px rgba(20,30,60,0.08); }
+  .panel h3 { margin:0 0 4px; font-size:15px; font-weight:800; color:#0d47a1; display:flex; gap:8px; align-items:center; }
+  .panel h4 { margin:0 0 10px; font-size:13px; font-weight:800; color:#37425a; display:flex; gap:8px; align-items:center; }
+  .panel-desc { font-size:12px; color:#7787a0; margin:0 0 14px; }
+  .source-note { font-size:11.5px; color:#8894a8; margin-top:8px; display:flex; align-items:center; gap:6px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; background:#eef3fb; color:#0d47a1; font-size:11px; font-weight:700; }
+  .badge.warn { background:#fff4d6; color:#8a5a00; }
+  .badge.good { background:#e7f5ea; color:#176b25; }
+  .badge.bad { background:#fdecea; color:#a72820; }
+  .error-box { background:#fdecea; color:#a72820; border:1px solid #f5c2be; border-radius:8px; padding:12px 16px; font-size:13px; display:none; margin-bottom:14px; }
+
+  /* year picker */
+  .year-row { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .year-big { font-size:30px; font-weight:800; color:#0d47a1; min-width:64px; }
+  .year-row input[type=range] { flex:1; min-width:220px; }
+
+  /* preset buttons */
+  .presets { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .preset-btn { background:#eef3fb; border:1px solid #d7e2f5; color:#37425a; padding:7px 14px;
+    border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; }
+  .preset-btn:hover { background:#e1ecfb; }
+  .preset-btn.active { background:#0d47a1; border-color:#0d47a1; color:#fff; }
+
+  /* KPI cards */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px,1fr)); gap:10px; margin-bottom:16px; }
+  .kpi-card { background:#fff; border:1px solid #e3e9f2; border-radius:10px; padding:12px 14px; box-shadow:0 1px 3px rgba(20,30,60,0.05); }
+  .kpi-label { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.05em; font-weight:800; color:#748096; margin-bottom:5px; }
+  .kpi-value { display:block; color:#243047; font-size:19px; font-weight:800; }
+  .kpi-value .unit { font-size:11.5px; color:#8894a8; font-weight:600; margin-left:3px; }
+  .kpi-delta { display:block; font-size:11px; margin-top:4px; font-weight:700; }
+  .kpi-delta.up { color:#1b7a3d; }
+  .kpi-delta.down { color:#c62828; }
+
+  /* sliders panel */
+  .grid-2 { display:grid; grid-template-columns:300px 1fr; gap:16px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns:1fr; } }
+  .group-label { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#0d47a1; font-weight:800; margin:16px 0 8px; }
+  .group-label:first-child { margin-top:0; }
+  .slider-row { margin-bottom:13px; }
+  .slider-label-row { display:flex; justify-content:space-between; font-size:12px; margin-bottom:2px; }
+  .slider-label { color:#37425a; }
+  .slider-value { font-weight:800; color:#0d47a1; }
+  .slider-hint { font-size:10.5px; color:#8894a8; margin-top:2px; }
+  input[type=range] { width:100%; accent-color:#1565c0; }
+
+  /* flow bar */
+  .flow-bar { display:flex; height:32px; border-radius:8px; overflow:hidden; border:1px solid #e3e9f2; }
+  .flow-seg { display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; transition:width .25s; }
+  .flow-legend { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; font-size:12px; color:#556; }
+  .legend-dot { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; }
+
+  /* revenue cards */
+  .revenue-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .rev-card { background:#f7f9fc; border:1px solid #e3e9f2; border-radius:10px; padding:11px 13px; }
+  .rev-label { font-size:10.5px; color:#748096; margin-bottom:5px; }
+  .rev-value { font-size:16px; font-weight:800; }
+
+  /* adequacy rows */
+  .adequacy-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #eef1f6; }
+  .adequacy-row:last-child { border-bottom:none; }
+  .adequacy-name { font-size:12.5px; color:#243047; font-weight:600; }
+  .adequacy-detail { font-size:11px; color:#8894a8; margin-top:2px; }
+
+  .chart-box { position:relative; height:260px; margin-top:8px; }
+  .footnote { font-size:11px; color:#8894a8; margin-top:6px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="err" class="error-box"></div>
+  <div id="data-status" class="source-note"></div>
+
+  <div class="panel">
+    <h3><i class="fa-solid fa-compass"></i> Scenario Analysis — Decision Support</h3>
+    <p class="panel-desc">Project peak load, energy consumption, exports, and NEA revenue under different
+      demand, hydrology, and cross-border trade assumptions. Baseline figures are pulled live from the same
+      workbook driving the rest of this dashboard.</p>
+    <div class="year-row">
+      <div class="year-big" id="year-display">2030</div>
+      <input type="range" id="year-slider" min="2025" max="2035" step="1" value="2030">
+    </div>
+    <div class="presets" id="preset-row"></div>
+  </div>
+
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h4><i class="fa-solid fa-sliders"></i> Scenario Parameters</h4>
+      <div id="sliders"></div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h4><i class="fa-solid fa-water"></i> Where This Year's Energy Goes</h4>
+        <p class="panel-desc" id="flow-desc"></p>
+        <div class="flow-bar" id="flow-bar"></div>
+        <div class="flow-legend" id="flow-legend"></div>
+      </div>
+
+      <div class="panel">
+        <h4><i class="fa-solid fa-chart-area"></i> Capacity, Demand &amp; Export Trajectory</h4>
+        <div class="chart-box"><canvas id="trajectoryChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h4><i class="fa-solid fa-sitemap"></i> Grid &amp; Trade Adequacy Check</h4>
+      <div id="adequacy"></div>
+    </div>
+
+    <div class="panel">
+      <h4><i class="fa-solid fa-coins"></i> NEA Revenue &amp; P&amp;L Impact</h4>
+      <div class="revenue-grid" id="revenue-grid"></div>
+      <div class="chart-box"><canvas id="revenueChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p class="footnote" id="footnote"></p>
+  </div>
+</div>
+
+<script>
+const STYLE = __NEA_STYLE_JSON__;
+const PALETTE = (STYLE && STYLE.palette) || ["#1565c0","#c62828","#2e7d32","#f9a825","#6a1b9a","#00897b"];
+
+const fmt = (n, d=0) => Number(n).toLocaleString("en-US", {maximumFractionDigits:d, minimumFractionDigits:d});
+
+let BASELINE = null;   // from /api/scenario-baseline
+let YEAR = 2030;
+let PARAMS = {};
+let ACTIVE_PRESET = "base";
+let trajChart = null, revChart = null;
+
+const PRESET_DEFS = {
+  base:        { name: "Base Case" },
+  optimistic:  { name: "Optimistic",  overrides: { demandGrowth: 1.15, capacityGrowth: 1.35, hydrology: 5,  indiaAbsorption: 100, evacCapacity: 1.6 } },
+  pessimistic: { name: "Pessimistic", overrides: { demandGrowth: 0.85, capacityGrowth: 0.7,  hydrology: -5, indiaAbsorption: 45,  evacCapacity: 0.8 } },
+  dryYear:     { name: "Dry-Year Crisis", overrides: { hydrology: -18, importPrice: 1.25 } },
+};
+
+function showError(msg) {
+  const el = document.getElementById("err");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+/* ---------- build default params from live baseline ---------- */
+function buildDefaultParams(b) {
+  const demandGrowthPct = Math.round((b.demandGrowthCagr ?? 0.09) * 1000) / 10; // %
+  const availGrowthPct  = Math.round((b.availabilityGrowthCagr ?? 0.10) * 1000) / 10;
+  return {
+    demandGrowth: demandGrowthPct,               // %/yr, peak & domestic demand
+    capacityGrowth: availGrowthPct,               // %/yr, generation/availability growth
+    hydrology: 0,                                 // % wet/dry year swing
+    domesticTariff: 11,                           // NPR/kWh
+    exportPrice: (b.exportRsMillion && b.exportGWh) ? Math.max(3, Math.min(10, (b.exportRsMillion*1e6)/(b.exportGWh*1e6))) : 7,
+    importPrice: (b.importRsMillion && b.importGWh) ? Math.max(6, Math.min(14, (b.importRsMillion*1e6)/(b.importGWh*1e6))) : 9.5,
+    evacCapacity: Math.max(500, Math.round((b.exportGWh || 900) / 8.76 / 0.6)), // implied MW from latest export energy
+    evacUtil: 60,
+    indiaAbsorption: 100,
+    substationCapacity: b.substationCapacityMVA ? Math.round(b.substationCapacityMVA * 0.8) : 4200, // MVA->approx usable MW
+  };
+}
+
+const SLIDER_DEFS = [
+  { group: "Demand & Supply", key: "demandGrowth", label: "Annual demand growth", unit: "%/yr", min: 3, max: 15, step: 0.5 },
+  { group: "Demand & Supply", key: "capacityGrowth", label: "Generation / availability growth", unit: "%/yr", min: 2, max: 20, step: 0.5, hint: "Growth in total energy availability (MU)" },
+  { group: "Demand & Supply", key: "hydrology", label: "Hydrology variation (wet/dry year)", unit: "%", min: -25, max: 15, step: 1, hint: "Negative = dry-year generation shock" },
+  { group: "Market & Pricing", key: "domesticTariff", label: "Domestic tariff (avg. realized)", unit: " NPR/kWh", min: 7, max: 14, step: 0.25 },
+  { group: "Market & Pricing", key: "exportPrice", label: "Export price to India", unit: " NPR/kWh", min: 3, max: 10, step: 0.25 },
+  { group: "Market & Pricing", key: "importPrice", label: "Dry-season import price", unit: " NPR/kWh", min: 6, max: 14, step: 0.25 },
+  { group: "Grid & Trade Constraints", key: "evacCapacity", label: "Cross-border evacuation capacity", unit: " MW", min: 300, max: 5000, step: 50, hint: "Interconnector transfer limit to India" },
+  { group: "Grid & Trade Constraints", key: "evacUtil", label: "Evacuation line utilization", unit: "%", min: 30, max: 90, step: 5 },
+  { group: "Grid & Trade Constraints", key: "indiaAbsorption", label: "India's export absorption", unit: "%", min: 0, max: 100, step: 5, hint: "Share of surplus India is willing/able to buy" },
+  { group: "Grid & Trade Constraints", key: "substationCapacity", label: "Domestic substation/grid capacity", unit: " MW", min: 1500, max: 8000, step: 100 },
+];
+
+function renderSliders() {
+  const host = document.getElementById("sliders");
+  host.innerHTML = "";
+  let lastGroup = null;
+  SLIDER_DEFS.forEach(def => {
+    if (def.group !== lastGroup) {
+      const g = document.createElement("div");
+      g.className = "group-label";
+      g.textContent = def.group;
+      host.appendChild(g);
+      lastGroup = def.group;
+    }
+    const row = document.createElement("div");
+    row.className = "slider-row";
+    row.innerHTML = `
+      <div class="slider-label-row">
+        <span class="slider-label">${def.label}</span>
+        <span class="slider-value" id="val-${def.key}"></span>
+      </div>
+      <input type="range" id="in-${def.key}" min="${def.min}" max="${def.max}" step="${def.step}">
+      ${def.hint ? `<div class="slider-hint">${def.hint}</div>` : ""}
+    `;
+    host.appendChild(row);
+    const input = row.querySelector("input");
+    input.addEventListener("input", () => {
+      PARAMS[def.key] = parseFloat(input.value);
+      ACTIVE_PRESET = "custom";
+      syncPresetButtons();
+      updateSliderLabel(def);
+      recompute();
+    });
+  });
+  syncAllSliderInputs();
+}
+
+function updateSliderLabel(def) {
+  document.getElementById(`val-${def.key}`).textContent = fmt(PARAMS[def.key], def.step < 1 ? 1 : 0) + def.unit;
+}
+
+function syncAllSliderInputs() {
+  SLIDER_DEFS.forEach(def => {
+    const input = document.getElementById(`in-${def.key}`);
+    input.value = PARAMS[def.key];
+    updateSliderLabel(def);
+  });
+}
+
+function renderPresets() {
+  const host = document.getElementById("preset-row");
+  host.innerHTML = "";
+  Object.entries(PRESET_DEFS).forEach(([key, def]) => {
+    const btn = document.createElement("button");
+    btn.className = "preset-btn";
+    btn.textContent = def.name;
+    btn.addEventListener("click", () => applyPreset(key));
+    btn.dataset.key = key;
+    host.appendChild(btn);
+  });
+  syncPresetButtons();
+}
+
+function syncPresetButtons() {
+  document.querySelectorAll(".preset-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.key === ACTIVE_PRESET);
+  });
+}
+
+function applyPreset(key) {
+  ACTIVE_PRESET = key;
+  const base = buildDefaultParams(BASELINE);
+  const overrides = (PRESET_DEFS[key] && PRESET_DEFS[key].overrides) || {};
+  PARAMS = { ...base };
+  Object.entries(overrides).forEach(([k, mult]) => {
+    if (k === "hydrology" || k === "indiaAbsorption") PARAMS[k] = mult; // absolute overrides
+    else if (k === "importPrice") PARAMS[k] = base.importPrice * mult;
+    else PARAMS[k] = base[k] * mult;
+  });
+  syncAllSliderInputs();
+  syncPresetButtons();
+  recompute();
+}
+
+/* ---------- model ---------- */
+function computeSeries() {
+  const b = BASELINE;
+  const baseYear = b.latestYear ? parseInt(b.latestYear) : 2025;
+  const years = [];
+  for (let y = baseYear; y <= baseYear + 10; y++) years.push(y);
+
+  return years.map(y => {
+    const t = y - baseYear;
+    const peakDemand = b.peakDemandMW * Math.pow(1 + PARAMS.demandGrowth/100, t);
+    const domesticEnergyDemand = b.domesticEnergyGWh * Math.pow(1 + PARAMS.demandGrowth/100, t);
+    const availableGeneration = b.totalAvailabilityGWh * Math.pow(1 + PARAMS.capacityGrowth/100, t) * (1 + PARAMS.hydrology/100);
+
+    const domesticConsumption = Math.min(availableGeneration, domesticEnergyDemand);
+    const deficit = Math.max(0, domesticEnergyDemand - availableGeneration);
+    const exportPotential = Math.max(0, availableGeneration - domesticEnergyDemand);
+
+    const maxExportByEvac = (PARAMS.evacCapacity * 8760 * (PARAMS.evacUtil/100)) / 1000; // GWh/yr
+    const maxExportByIndia = exportPotential * (PARAMS.indiaAbsorption/100);
+    const actualExport = Math.min(exportPotential, maxExportByEvac, maxExportByIndia);
+    const curtailed = Math.max(0, exportPotential - actualExport);
+
+    const revenueDomestic = domesticConsumption * 1e6 * PARAMS.domesticTariff;
+    const revenueExport = actualExport * 1e6 * PARAMS.exportPrice;
+    const importCost = deficit * 1e6 * PARAMS.importPrice;
+    const lostRevenueCurtailment = curtailed * 1e6 * PARAMS.exportPrice;
+    const netRevenue = revenueDomestic + revenueExport - importCost;
+
+    return { year: y, peakDemand, domesticEnergyDemand, availableGeneration, domesticConsumption,
+      deficit, exportPotential, actualExport, curtailed, revenueDomestic, revenueExport,
+      importCost, lostRevenueCurtailment, netRevenue };
+  });
+}
+
+function nrsB(n) { return fmt(n/1e9, 2); }
+
+function recompute() {
+  const series = computeSeries();
+  const s = series.find(r => r.year === YEAR) || series[series.length-1];
+  const base0 = series[0];
+
+  renderKpis(s, base0);
+  renderFlow(s);
+  renderAdequacy(s);
+  renderRevenue(s, series);
+  renderTrajectory(series);
+}
+
+function kpiCard(label, value, unit, delta, deltaLabel) {
+  return `<div class="kpi-card">
+    <span class="kpi-label">${label}</span>
+    <span class="kpi-value">${value}<span class="unit">${unit}</span></span>
+    ${delta !== undefined ? `<span class="kpi-delta ${delta>=0?'up':'down'}">${delta>=0?'▲':'▼'} ${fmt(Math.abs(delta),1)}% ${deltaLabel}</span>` : ""}
+  </div>`;
+}
+
+function renderKpis(s, base0) {
+  const el = document.getElementById("kpi-grid");
+  el.innerHTML = [
+    kpiCard("Peak System Load", fmt(s.peakDemand), "MW", (s.peakDemand-base0.peakDemand)/base0.peakDemand*100, `vs ${base0.year}`),
+    kpiCard("Domestic Consumption", fmt(s.domesticConsumption), "GWh", (s.domesticConsumption-base0.domesticConsumption)/base0.domesticConsumption*100, `vs ${base0.year}`),
+    kpiCard("Exported to India", fmt(s.actualExport), "GWh", s.exportPotential>0 ? (s.actualExport-s.exportPotential)/s.exportPotential*100 : 0, "of surplus sold"),
+    kpiCard("Net Annual Revenue", "NPR " + nrsB(s.netRevenue), "bn"),
+  ].join("");
+}
+
+function renderFlow(s) {
+  const total = s.availableGeneration || 1;
+  const domesticPct = s.domesticConsumption/total*100;
+  const exportPct = s.actualExport/total*100;
+  const curtailPct = s.curtailed/total*100;
+  const bar = document.getElementById("flow-bar");
+  bar.innerHTML = `
+    <div class="flow-seg" style="width:${domesticPct}%;background:${PALETTE[0]}">${domesticPct>12?fmt(domesticPct)+'%':''}</div>
+    <div class="flow-seg" style="width:${exportPct}%;background:${PALETTE[2]||'#2e7d32'}">${exportPct>8?fmt(exportPct)+'%':''}</div>
+    ${curtailPct>0.3?`<div class="flow-seg" style="width:${curtailPct}%;background:${PALETTE[1]||'#c62828'}">${curtailPct>6?fmt(curtailPct)+'%':''}</div>`:""}
+  `;
+  document.getElementById("flow-legend").innerHTML = `
+    <span><span class="legend-dot" style="background:${PALETTE[0]}"></span>Domestic consumption — ${fmt(s.domesticConsumption)} GWh</span>
+    <span><span class="legend-dot" style="background:${PALETTE[2]||'#2e7d32'}"></span>Exported (sold) — ${fmt(s.actualExport)} GWh</span>
+    ${s.curtailed>0.5?`<span><span class="legend-dot" style="background:${PALETTE[1]||'#c62828'}"></span>Curtailed / unsold — ${fmt(s.curtailed)} GWh</span>`:""}
+    ${s.deficit>1?`<span><span class="legend-dot" style="background:#f9a825"></span>Import required — ${fmt(s.deficit)} GWh</span>`:""}
+  `;
+  document.getElementById("flow-desc").textContent =
+    `Available generation: ${fmt(s.availableGeneration)} GWh in ${s.year}.` +
+    (s.deficit>1 ? ` A supply deficit of ${fmt(s.deficit)} GWh must be imported.` : "");
+}
+
+function pill(ok, okText, badText) {
+  return `<span class="badge ${ok?'good':'bad'}">${ok?okText:badText}</span>`;
+}
+
+function renderAdequacy(s) {
+  const substationOk = s.peakDemand <= PARAMS.substationCapacity;
+  const evacOk = s.exportPotential === 0 || s.curtailed < 0.02 * s.exportPotential;
+  const deficitFlag = s.deficit > 1;
+  document.getElementById("adequacy").innerHTML = `
+    <div class="adequacy-row">
+      <div><div class="adequacy-name">Domestic substation / grid capacity</div>
+      <div class="adequacy-detail">Peak load ${fmt(s.peakDemand)} MW vs ${fmt(PARAMS.substationCapacity)} MW capacity</div></div>
+      ${pill(substationOk, "Adequate", "Bottleneck")}
+    </div>
+    <div class="adequacy-row">
+      <div><div class="adequacy-name">Cross-border evacuation (export line)</div>
+      <div class="adequacy-detail">${s.exportPotential>0 ? fmt(s.curtailed)+' GWh of '+fmt(s.exportPotential)+' GWh surplus unsold' : 'No exportable surplus this year'}</div></div>
+      ${pill(evacOk, "Adequate", "Constrained")}
+    </div>
+    <div class="adequacy-row">
+      <div><div class="adequacy-name">Domestic supply security</div>
+      <div class="adequacy-detail">${deficitFlag ? 'Deficit of '+fmt(s.deficit)+' GWh requires import' : 'Generation covers domestic demand'}</div></div>
+      ${pill(!deficitFlag, "Self-sufficient", "Import needed")}
+    </div>
+    <div class="adequacy-row">
+      <div><div class="adequacy-name">India export absorption risk</div>
+      <div class="adequacy-detail">Set to ${PARAMS.indiaAbsorption}% of surplus buyable</div></div>
+      ${pill(PARAMS.indiaAbsorption>=85, "Low risk", "High risk")}
+    </div>
+  `;
+}
+
+function renderRevenue(s, series) {
+  document.getElementById("revenue-grid").innerHTML = `
+    <div class="rev-card"><div class="rev-label">Domestic sales revenue</div><div class="rev-value" style="color:${PALETTE[0]}">NPR ${nrsB(s.revenueDomestic)} bn</div></div>
+    <div class="rev-card"><div class="rev-label">Export revenue</div><div class="rev-value" style="color:${PALETTE[2]||'#2e7d32'}">NPR ${nrsB(s.revenueExport)} bn</div></div>
+    <div class="rev-card"><div class="rev-label">Import cost</div><div class="rev-value" style="color:${PALETTE[1]||'#c62828'}">− NPR ${nrsB(s.importCost)} bn</div></div>
+    <div class="rev-card"><div class="rev-label">Curtailment loss</div><div class="rev-value" style="color:${PALETTE[1]||'#c62828'}">− NPR ${nrsB(s.lostRevenueCurtailment)} bn</div></div>
+    <div class="rev-card" style="border-color:${PALETTE[0]}"><div class="rev-label">Net annual revenue</div><div class="rev-value" style="color:${PALETTE[0]}">NPR ${nrsB(s.netRevenue)} bn</div></div>
+  `;
+  const ctx = document.getElementById("revenueChart");
+  const labels = series.map(r => r.year);
+  const data = {
+    labels,
+    datasets: [
+      { label: "Domestic", data: series.map(r=>r.revenueDomestic/1e9), backgroundColor: PALETTE[0] },
+      { label: "Export", data: series.map(r=>r.revenueExport/1e9), backgroundColor: PALETTE[2]||"#2e7d32" },
+      { label: "Import cost", data: series.map(r=>-r.importCost/1e9), backgroundColor: PALETTE[1]||"#c62828" },
+      { label: "Curtailment loss", data: series.map(r=>-r.lostRevenueCurtailment/1e9), backgroundColor: PALETTE[3]||"#f9a825" },
+    ],
+  };
+  if (revChart) revChart.destroy();
+  revChart = new Chart(ctx, {
+    type: "bar",
+    data,
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: "NPR bn" } } },
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: NPR ${fmt(c.raw,1)} bn` } } },
+    },
+  });
+}
+
+function renderTrajectory(series) {
+  const ctx = document.getElementById("trajectoryChart");
+  const labels = series.map(r => r.year);
+  const data = {
+    labels,
+    datasets: [
+      { label: "Domestic demand (GWh)", data: series.map(r=>r.domesticEnergyDemand), borderColor: PALETTE[0], backgroundColor: "transparent", tension: 0.25 },
+      { label: "Available generation (GWh)", data: series.map(r=>r.availableGeneration), borderColor: PALETTE[2]||"#2e7d32", backgroundColor: "rgba(46,125,50,0.08)", fill: true, tension: 0.25 },
+      { label: "Export sold (GWh)", data: series.map(r=>r.actualExport), borderColor: PALETTE[3]||"#f9a825", backgroundColor: "transparent", tension: 0.25 },
+    ],
+  };
+  if (trajChart) trajChart.destroy();
+  trajChart = new Chart(ctx, {
+    type: "line",
+    data,
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
+      scales: { y: { title: { display: true, text: "GWh" } } },
+    },
+  });
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  try {
+    const res = await fetch("/api/scenario-baseline");
+    BASELINE = await res.json();
+  } catch (e) {
+    showError("Could not load baseline data from the server: " + e.message);
+    return;
+  }
+
+  if (!BASELINE || !BASELINE.latestYear) {
+    document.getElementById("data-status").innerHTML =
+      `<i class="fa-solid fa-triangle-exclamation"></i> No workbook data is loaded yet — showing the tool with placeholder defaults. Once the NEA Google Sheet syncs, baseline figures here will update automatically, same as the other NEA tabs.`;
+    BASELINE = {
+      latestYear: 2025, peakDemandMW: 2901, totalAvailabilityGWh: 15641,
+      domesticEnergyGWh: 11319, exportGWh: 2380, importGWh: 1712,
+      substationCapacityMVA: 5000, demandGrowthCagr: 0.09, availabilityGrowthCagr: 0.10,
+    };
+  } else {
+    document.getElementById("data-status").innerHTML =
+      `<span class="badge good"><i class="fa-solid fa-database"></i> Live data — FY ${BASELINE.latestYear}</span>
+       <span class="badge">Peak ${fmt(BASELINE.peakDemandMW)} MW</span>
+       <span class="badge">Availability ${fmt(BASELINE.totalAvailabilityGWh)} GWh</span>
+       <span class="badge">Export ${fmt(BASELINE.exportGWh)} GWh</span>`;
+  }
+
+  document.getElementById("footnote").textContent =
+    `Baseline (${BASELINE.latestYear}): peak demand ${fmt(BASELINE.peakDemandMW)} MW, total availability ${fmt(BASELINE.totalAvailabilityGWh)} GWh, ` +
+    `domestic consumption ${fmt(BASELINE.domesticEnergyGWh)} GWh, export ${fmt(BASELINE.exportGWh)} GWh — pulled from the same workbook as the ` +
+    `Overview and Forecast Lab tabs. Growth rates default to trailing CAGR from that sheet; all sliders are editable. Revenue figures are ` +
+    `gross, illustrative estimates and exclude NEA's full cost structure (generation cost, T&D losses, debt service).`;
+
+  const yearSlider = document.getElementById("year-slider");
+  const startYear = parseInt(BASELINE.latestYear) || 2025;
+  yearSlider.min = startYear;
+  yearSlider.max = startYear + 10;
+  YEAR = Math.min(startYear + 5, startYear + 10);
+  yearSlider.value = YEAR;
+  document.getElementById("year-display").textContent = YEAR;
+  yearSlider.addEventListener("input", () => {
+    YEAR = parseInt(yearSlider.value);
+    document.getElementById("year-display").textContent = YEAR;
+    recompute();
+  });
+
+  PARAMS = buildDefaultParams(BASELINE);
+  renderPresets();
+  renderSliders();
+  recompute();
+}
+
+boot();
+</script>
+</body>
+</html>
