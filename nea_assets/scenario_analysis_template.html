@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scenario Analysis — Nepal Power Sector Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.14.0/dist/chartjs-chart-sankey.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
 *{box-sizing:border-box}
@@ -51,6 +52,23 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .adequacy{display:grid;gap:7px}.adequacy-row{display:flex;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px solid #eef1f6}.adequacy-row:last-child{border-bottom:0}.adequacy-row strong{font-size:11px}.adequacy-row small{display:block;color:#8894a8;font-size:9px;margin-top:2px}
 .footer-note{font-size:10px;color:#8894a8;line-height:1.55}
 .hidden{display:none!important}
+.year-panel{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.year-readout{min-width:150px}
+.year-readout strong{display:block;font-size:26px;color:#0d47a1;line-height:1.1}
+.year-readout small{color:#8894a8;font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-weight:800}
+.term-badge{display:inline-block;padding:4px 11px;border-radius:20px;font-size:10px;font-weight:800;margin-top:4px}
+.term-short{background:#e7f5ea;color:#176b25}.term-medium{background:#fff4d6;color:#8a5a00}.term-long{background:#eaf1fd;color:#0d47a1}
+.year-slider-wrap{flex:1;min-width:220px}
+.year-slider-wrap input[type=range]{width:100%;accent-color:#1565c0;height:6px}
+.year-ticks{display:flex;justify-content:space-between;font-size:9px;color:#a3adc0;margin-top:2px}
+.year-jump{display:flex;gap:6px;flex-wrap:wrap}
+.year-jump button{font-size:10px;padding:7px 10px}
+.year-jump button.active{background:#0d47a1;color:#fff;border-color:#0d47a1}
+.play-btn{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-size:13px}
+.chart-box.sankey{height:320px}
+.legend-note{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#7787a0;margin-top:8px}
+.legend-note span{display:inline-flex;align-items:center;gap:5px}
+.legend-note i{width:9px;height:9px;border-radius:2px;display:inline-block}
 </style>
 </head>
 <body>
@@ -62,6 +80,24 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     <h3><i class="fa-solid fa-compass"></i> Scenario Analysis — Power System Decision Support</h3>
     <p class="desc">Build, combine and compare multiple demand, generation, hydrology, trade and grid scenarios over a 5–20 year planning horizon. The model is intended for screening and policy/system-expansion analysis; financial results are illustrative.</p>
     <div class="stage-nav" id="stageNav"></div>
+  </div>
+
+  <div class="panel">
+    <h4><i class="fa-solid fa-calendar-days"></i> Decision Year — Scrub Across the Planning Horizon</h4>
+    <p class="desc">Drag the slider (or hit Play) to move the evaluation year. Every KPI, chart and table below recalculates live for the <strong>active variant</strong> at that year — use it to walk from short-term operating conditions through to the long-term strategic picture.</p>
+    <div class="year-panel">
+      <button class="play-btn primary" id="playBtn" onclick="togglePlay()" title="Play through the horizon"><i class="fa-solid fa-play" id="playIcon"></i></button>
+      <div class="year-readout">
+        <small>Evaluating</small>
+        <strong id="yearBig"></strong>
+        <span class="term-badge" id="termBadge"></span>
+      </div>
+      <div class="year-slider-wrap">
+        <input type="range" id="yearSlider" min="0" max="10" step="1" oninput="onYearScrub(this.value)">
+        <div class="year-ticks" id="yearTicks"></div>
+      </div>
+      <div class="year-jump" id="yearJump"></div>
+    </div>
   </div>
 
   <div id="stage1" class="stage-panel active">
@@ -207,6 +243,32 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
   </div>
 
+  <div class="grid">
+    <div class="panel">
+      <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
+      <p class="desc" id="sankeyDesc"></p>
+      <div class="chart-box sankey"><canvas id="sankeyChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
+      <p class="desc">How domestic sales, export sales and import purchases combine into net revenue at the selected year.</p>
+      <div class="chart-box"><canvas id="waterfallChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h4><i class="fa-solid fa-bullseye"></i> Multi-Criteria Scenario Comparison</h4>
+      <p class="desc">Enabled variants scored 0–100 on five decision criteria at the selected year (outer edge is better on every axis).</p>
+      <div class="chart-box tall"><canvas id="radarChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-layer-group"></i> Energy Balance Composition Over Time — Active Variant</h4>
+      <p class="desc">How domestic use, export and curtailment split the available generation across the full horizon; the marker tracks your selected year.</p>
+      <div class="chart-box tall"><canvas id="stackedAreaChart"></canvas></div>
+    </div>
+  </div>
+
   <div class="panel">
     <div class="footer-note" id="footnote"></div>
   </div>
@@ -231,7 +293,8 @@ let scenarios = [];
 let activeId = "base";
 let targetYear = 2030;
 let horizonYears = 10;
-let trajChart=null, revenueChart=null, tornadoChart=null;
+let trajChart=null, revenueChart=null, tornadoChart=null, sankeyChart=null, waterfallChart=null, radarChart=null, stackedAreaChart=null;
+let playTimer=null;
 const STORAGE_KEY="npsd_scenario_analysis_v1";
 const SNAPSHOT_KEY="npsd_scenario_snapshots_v1";
 let stages=[
@@ -405,7 +468,63 @@ function renderHydro(){
  document.getElementById("hydroYearLabel").textContent=a.params.hydroYear||"all years";
 }
 function renderHorizon(){
- document.getElementById("horizon").innerHTML=[5,10,15,20].map(n=>`<button class="${horizonYears===n?"active":""}" onclick="horizonYears=${n};targetYear=(+BASELINE.latestYear||2025)+n;renderAll()">${n} Years</button>`).join("");
+ document.getElementById("horizon").innerHTML=[5,10,15,20].map(n=>`<button class="${horizonYears===n?"active":""}" onclick="setHorizon(${n})">${n} Years</button>`).join("");
+}
+function setHorizon(n){
+ const base=+BASELINE.latestYear||2025;
+ const offset=clamp(targetYear-base,0,n);
+ horizonYears=n;
+ targetYear=base+offset;
+ renderAll();
+}
+function termInfo(offset){
+ if(offset<=5)return{key:"short",label:"Short-Term",cls:"term-short",note:"Operating horizon — near-term system adequacy"};
+ if(offset<=10)return{key:"medium",label:"Medium-Term",cls:"term-medium",note:"Capacity-planning horizon — next generation/grid additions"};
+ return{key:"long",label:"Long-Term",cls:"term-long",note:"Strategic horizon — structural demand, trade and hydrology risk"};
+}
+function renderYearScrubber(){
+ const base=+BASELINE.latestYear||2025;
+ const offset=clamp(targetYear-base,0,horizonYears);
+ const slider=document.getElementById("yearSlider");
+ slider.min=0; slider.max=horizonYears; slider.value=offset;
+ const years=Array.from({length:horizonYears+1},(_,i)=>base+i);
+ document.getElementById("yearTicks").innerHTML=`<span>${years[0]}</span><span>${years[years.length-1]}</span>`;
+ document.getElementById("yearBig").textContent=targetYear;
+ const t=termInfo(offset);
+ document.getElementById("termBadge").innerHTML=`<span class="term-badge ${t.cls}">${t.label}</span>`;
+ document.getElementById("termBadge").title=t.note;
+ const jumps=[
+   ["Short-term",Math.min(3,horizonYears)],
+   ["Medium-term",Math.min(Math.max(7,Math.round(horizonYears*.5)),horizonYears)],
+   ["Long-term",horizonYears]
+ ];
+ document.getElementById("yearJump").innerHTML=jumps.map(([label,off])=>`<button class="${offset===off?"active":""}" onclick="jumpToOffset(${off})">${label} (${base+off})</button>`).join("");
+}
+function jumpToOffset(off){
+ stopPlay();
+ targetYear=(+BASELINE.latestYear||2025)+clamp(off,0,horizonYears);
+ renderAll();
+}
+function onYearScrub(v){
+ stopPlay();
+ targetYear=(+BASELINE.latestYear||2025)+parseInt(v,10);
+ renderAll();
+}
+function togglePlay(){
+ if(playTimer){stopPlay();return}
+ const base=+BASELINE.latestYear||2025;
+ document.getElementById("playIcon").className="fa-solid fa-pause";
+ playTimer=setInterval(()=>{
+   let offset=(targetYear-base+1);
+   if(offset>horizonYears)offset=0;
+   targetYear=base+offset;
+   renderAll();
+ },900);
+}
+function stopPlay(){
+ if(playTimer){clearInterval(playTimer);playTimer=null;}
+ const icon=document.getElementById("playIcon");
+ if(icon)icon.className="fa-solid fa-play";
 }
 function setHydro(type){
  const a=active();
@@ -565,6 +684,96 @@ function renderTornado(){
  if(tornadoChart)tornadoChart.destroy();
  tornadoChart=new Chart(canvas,{type:"bar",data:{labels:rows.map(r=>r.label),datasets:[{label:"Net revenue swing vs active variant (NPR bn)",data:rows.map(r=>[r.lo/1e9,r.hi/1e9]),backgroundColor:PALETTE[0],borderRadius:4}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`Δ ${fmt(c.raw[1]-c.raw[0],2)} bn`}}},scales:{x:{title:{display:true,text:"NPR bn vs. current setting"}}}}});
 }
+
+function renderSankey(){
+ const canvas=document.getElementById("sankeyChart");
+ if(!canvas)return;
+ if(typeof Chart==="undefined"||!Chart.registry||!Chart.registry.controllers.get)return;
+ const hasSankey=(()=>{try{return !!Chart.registry.getController("sankey")}catch(e){return false}})();
+ const a=active(), r=scenarioAt(a,targetYear);
+ const flows=[];
+ if(r.domesticConsumption>0.01)flows.push({from:"Available Generation",to:"Domestic Demand Met",flow:r.domesticConsumption});
+ if(r.actualExport>0.01)flows.push({from:"Available Generation",to:"Export Sold",flow:r.actualExport});
+ if(r.curtailed>0.01)flows.push({from:"Available Generation",to:"Curtailed (Unused Surplus)",flow:r.curtailed});
+ if(r.deficit>0.01)flows.push({from:"Import (Deficit Cover)",to:"Domestic Demand Met",flow:r.deficit});
+ document.getElementById("sankeyDesc").textContent=`${a.name} at ${targetYear}: ${fmt(r.availableGeneration)} GWh available generation, split across domestic use, export and curtailment${r.deficit>0.01?", topped up by imports":""}.`;
+ if(sankeyChart){sankeyChart.destroy();sankeyChart=null;}
+ if(!hasSankey||!flows.length){
+   canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+   if(!hasSankey)document.getElementById("sankeyDesc").textContent+=" (Sankey plugin failed to load — showing text summary only.)";
+   return;
+ }
+ const nodeColors={
+  "Available Generation":"#1565c0","Domestic Demand Met":"#2e7d32",
+  "Export Sold":"#00897b","Curtailed (Unused Surplus)":"#f9a825","Import (Deficit Cover)":"#c62828"
+ };
+ const getColor=k=>nodeColors[k]||"#90a4ae";
+ sankeyChart=new Chart(canvas,{type:"sankey",data:{datasets:[{data:flows,colorFrom:c=>getColor(c.dataset.data[c.dataIndex].from),colorTo:c=>getColor(c.dataset.data[c.dataIndex].to),colorMode:"gradient",labels:Object.fromEntries(Object.keys(nodeColors).map(k=>[k,k])),font:{size:10}}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>`${c.raw.from} → ${c.raw.to}: ${fmt(c.raw.flow)} GWh`}}}}});
+}
+
+function renderWaterfall(){
+ const canvas=document.getElementById("waterfallChart");
+ if(!canvas)return;
+ const a=active(), r=scenarioAt(a,targetYear);
+ const dom=r.revenueDomestic, exp=r.revenueExport, imp=r.importCost;
+ const steps=[
+  {label:"Domestic Revenue",start:0,end:dom,color:PALETTE[0]},
+  {label:"Export Revenue",start:dom,end:dom+exp,color:PALETTE[1]},
+  {label:"Import Cost",start:dom+exp,end:dom+exp-imp,color:"#c62828"}
+ ];
+ const netTotal=dom+exp-imp;
+ const labels=[...steps.map(s=>s.label),"Net Revenue"];
+ const data=[...steps.map(s=>[Math.min(s.start,s.end)/1e9,Math.max(s.start,s.end)/1e9]),[0,netTotal/1e9]];
+ const colors=[...steps.map(s=>s.color),"#0d47a1"];
+ if(waterfallChart)waterfallChart.destroy();
+ waterfallChart=new Chart(canvas,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`NPR ${fmt(Math.abs(c.raw[1]-c.raw[0]),2)} bn`}}},scales:{y:{title:{display:true,text:"NPR bn"}}}}});
+}
+
+const RADAR_CRITERIA=["Net Revenue","Supply Security","Export Utilization","Grid Headroom","Hydrology Resilience"];
+function radarMetrics(s){
+ const r=scenarioAt(s,targetYear), p=s.params;
+ const supplySecurity=100-clamp(r.deficit/(r.domesticEnergyDemand||1)*100,0,100);
+ const exportUtil=r.exportPotential>0?clamp(r.actualExport/r.exportPotential*100,0,100):100;
+ const gridHeadroom=clamp((p.substationCapacity-r.peakDemand)/p.substationCapacity*100,0,100);
+ const hydroResilience=clamp((p.hydrology+25)/40*100,0,100);
+ return {netRevenue:r.netRevenue,supplySecurity,exportUtil,gridHeadroom,hydroResilience};
+}
+function renderRadar(){
+ const canvas=document.getElementById("radarChart");
+ if(!canvas)return;
+ const list=enabled();
+ if(radarChart){radarChart.destroy();radarChart=null;}
+ if(list.length<2){canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);return}
+ const raw=list.map(s=>({s,m:radarMetrics(s)}));
+ const revs=raw.map(x=>x.m.netRevenue);
+ const minR=Math.min(...revs), maxR=Math.max(...revs);
+ const revScore=v=>maxR===minR?70:clamp((v-minR)/(maxR-minR)*100,0,100);
+ const datasets=raw.map((x,i)=>({
+   label:x.s.name,
+   data:[revScore(x.m.netRevenue),x.m.supplySecurity,x.m.exportUtil,x.m.gridHeadroom,x.m.hydroResilience],
+   borderColor:PALETTE[i%PALETTE.length],backgroundColor:PALETTE[i%PALETTE.length]+"33",
+   borderWidth:x.s.id===activeId?3:1.5,pointRadius:2
+ }));
+ radarChart=new Chart(canvas,{type:"radar",data:{labels:RADAR_CRITERIA,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9}}}},scales:{r:{min:0,max:100,ticks:{stepSize:25,backdropColor:"transparent",font:{size:8}},pointLabels:{font:{size:10}}}}}});
+}
+
+function renderStackedArea(){
+ const canvas=document.getElementById("stackedAreaChart");
+ if(!canvas)return;
+ const a=active();
+ const series=computeSeries(a);
+ const labels=series.map(r=>r.year);
+ const markIdx=series.findIndex(r=>r.year===targetYear);
+ const markerFor=vals=>vals.map((v,i)=>i===markIdx?6:0);
+ const datasets=[
+  {label:"Domestic Demand Met",data:series.map(r=>r.domesticConsumption),backgroundColor:PALETTE[0]+"cc",borderColor:PALETTE[0],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
+  {label:"Export Sold",data:series.map(r=>r.actualExport),backgroundColor:PALETTE[1]+"cc",borderColor:PALETTE[1],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
+  {label:"Curtailed",data:series.map(r=>r.curtailed),backgroundColor:PALETTE[3]+"cc",borderColor:PALETTE[3],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
+  {label:"Import (Deficit)",data:series.map(r=>r.deficit),backgroundColor:"#c62828cc",borderColor:"#c62828",fill:true,stack:"e",pointRadius:markerFor(series),tension:.2}
+ ];
+ if(stackedAreaChart)stackedAreaChart.destroy();
+ stackedAreaChart=new Chart(canvas,{type:"line",data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9}}},tooltip:{mode:"index"}},interaction:{mode:"index",intersect:false},scales:{y:{stacked:true,title:{display:true,text:"GWh"}}}}});
+}
 function renderWeightControls(){
  const host=document.getElementById("weightControls");
  if(!host)return;
@@ -621,8 +830,9 @@ function renderSummary(){
 function renderAll(){
  clearError();
  renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("customControls",controlDefs.custom);
- renderHydro();renderHorizon();renderSummary();renderKpis();renderAdequacy();renderCharts();renderComparison();
+ renderHydro();renderHorizon();renderYearScrubber();renderSummary();renderKpis();renderAdequacy();renderCharts();renderComparison();
  renderRecommendation();renderTornado();renderWeightControls();renderExpectedValue();
+ renderSankey();renderWaterfall();renderRadar();renderStackedArea();
  persistSession();
 }
 function resetScenarios(){
