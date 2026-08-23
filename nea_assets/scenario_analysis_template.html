@@ -72,6 +72,18 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .legend-note{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#7787a0;margin-top:8px}
 .legend-note span{display:inline-flex;align-items:center;gap:5px}
 .legend-note i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.chart-box.sankey-tall{height:430px}
+.mix-toggle{display:flex;gap:6px;margin-bottom:10px}
+.mix-toggle button{font-size:10px;padding:6px 10px}
+.mix-toggle button.active{background:#0d47a1;color:#fff;border-color:#0d47a1}
+.mix-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 16px}
+.mix-group-label{font-size:10px;font-weight:800;color:#0d47a1;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px}
+.mix-total-note{font-size:10px;color:#8894a8;margin-top:6px}
+.view-toggle{display:flex;gap:6px;margin-bottom:10px}
+.view-toggle button{font-size:10px;padding:6px 10px}
+.view-toggle button.active{background:#0d47a1;color:#fff;border-color:#0d47a1}
+.target-note{font-size:9.5px;color:#6b7890;margin-top:5px;line-height:1.5;background:#f6f8fb;border-radius:6px;padding:6px 8px}
+.target-note strong{color:#243047}
 </style>
 </head>
 <body>
@@ -255,7 +267,16 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     <div class="panel">
       <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
       <p class="desc" id="sankeyDesc"></p>
-      <div class="chart-box sankey"><canvas id="sankeyChart"></canvas></div>
+      <div class="chart-box sankey-tall"><canvas id="sankeyChart"></canvas></div>
+      <div id="sankeyLegend" class="legend-note"></div>
+      <div class="section-label" style="margin-top:14px">Plant Mix &amp; Consumer Mix (Illustrative Split)</div>
+      <p class="desc" style="margin-bottom:8px">Splits the modelled generation and billed-energy totals across power-plant ownership types and consumer categories, following NEA's published generation-mix and consumer-category patterns. Adjust if you have more current figures — the underlying scenario numbers (generation, billed energy, losses, etc.) are unchanged.</p>
+      <div class="mix-group-label">Generation by Plant Type</div>
+      <div class="mix-grid" id="genMixControls"></div>
+      <div class="mix-group-label">Billed Energy by Consumer Type</div>
+      <div class="mix-grid" id="consMixControls"></div>
+      <div class="mix-total-note" id="mixTotalNote"></div>
+      <div class="variant-toolbar" style="margin-top:8px"><button onclick="resetMix()"><i class="fa-solid fa-rotate-left"></i> Reset Mix to Defaults</button></div>
     </div>
     <div class="panel">
       <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
@@ -271,8 +292,9 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
       <div class="chart-box tall"><canvas id="radarChart"></canvas></div>
     </div>
     <div class="panel">
-      <h4><i class="fa-solid fa-layer-group"></i> Energy Balance Composition Over Time — Active Variant</h4>
-      <p class="desc">How domestic use, export and curtailment split the available generation across the full horizon; the marker tracks your selected year.</p>
+      <h4><i class="fa-solid fa-layer-group"></i> Energy Balance Composition — Active Variant</h4>
+      <p class="desc" id="stackedAreaDesc">How billed energy, T&amp;D losses, export, curtailment and import split the available generation.</p>
+      <div class="view-toggle" id="stackedAreaToggle"></div>
       <div class="chart-box tall"><canvas id="stackedAreaChart"></canvas></div>
     </div>
   </div>
@@ -303,6 +325,19 @@ let targetYear = 2030;
 let horizonYears = 10;
 let trajChart=null, revenueChart=null, tornadoChart=null, sankeyChart=null, waterfallChart=null, radarChart=null, stackedAreaChart=null;
 let playTimer=null;
+let stackedAreaView="year"; // "year" = selected-year snapshot, "trend" = full horizon
+let mix=null; // {gen:{nea,neaSubsidiary,ipp}, cons:{domestic,industrial,commercial,irrigation,nonCommercial,streetLight}}
+
+// Friendlier, plain-language names for the three risk tiers used across
+// the KPI banner, adequacy panel and constraint heatmap. Internal code
+// (scoring, sorting, CSS hooks) keeps the original Adequate/Watch/Critical
+// keys so none of the underlying logic has to change — only the words
+// shown to the user do.
+const STATUS_META={
+ Adequate:{label:"Healthy",long:"Healthy — within safe operating range",cls:"good"},
+ Watch:{label:"Needs Attention",long:"Needs Attention — approaching a limit",cls:"warn"},
+ Critical:{label:"At Risk",long:"At Risk — a limit is being exceeded",cls:"bad"}
+};
 const STORAGE_KEY="npsd_scenario_analysis_v1";
 const SNAPSHOT_KEY="npsd_scenario_snapshots_v1";
 let stages=[
@@ -337,6 +372,14 @@ function buildDefaults(b){
  const consumerGrowth=Number.isFinite(+b.consumerGrowthCagr)?Math.round(+b.consumerGrowthCagr*1000)/10:7;
  return {demandGrowth:Math.round(demand*10)/10,capacityGrowth:Math.round(cap*10)/10,hydrology:0,hydroYear:null,hydroDuration:1,domesticTariff:11,exportPrice,importPrice,evacCapacity:Math.max(500,Math.round((b.exportGWh||900)/8.76/.6)),evacUtil:60,indiaAbsorption:100,substationCapacity:b.substationCapacityMVA?Math.round(b.substationCapacityMVA*.8):4200,systemLossPct,lossImprovement,consumerGrowth};
 }
+function buildMixDefaults(b){
+ const g=(b&&b.generationMixPct)||{};
+ const c=(b&&b.consumerMixPct)||{};
+ return {
+  gen:{nea:Number.isFinite(+g.nea)?+g.nea:20,neaSubsidiary:Number.isFinite(+g.neaSubsidiary)?+g.neaSubsidiary:20,ipp:Number.isFinite(+g.ipp)?+g.ipp:60},
+  cons:{domestic:Number.isFinite(+c.domestic)?+c.domestic:42,industrial:Number.isFinite(+c.industrial)?+c.industrial:36,commercial:Number.isFinite(+c.commercial)?+c.commercial:9,irrigation:Number.isFinite(+c.irrigation)?+c.irrigation:5,nonCommercial:Number.isFinite(+c.nonCommercial)?+c.nonCommercial:5,streetLight:Number.isFinite(+c.streetLight)?+c.streetLight:3}
+ };
+}
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function defaultScenarios(){
  const d=buildDefaults(BASELINE);
@@ -362,12 +405,14 @@ function loadSavedSession(){
    activeId=saved.activeId&&scenarios.some(s=>s.id===saved.activeId)?saved.activeId:scenarios[0].id;
    horizonYears=[5,10,15,20].includes(saved.horizonYears)?saved.horizonYears:10;
    targetYear=saved.targetYear||((+BASELINE.latestYear||2025)+5);
+   mix=saved.mix&&saved.mix.gen&&saved.mix.cons?saved.mix:buildMixDefaults(BASELINE);
+   stackedAreaView=saved.stackedAreaView==="trend"?"trend":"year";
    return true;
  }catch(e){console.warn("Could not restore saved scenario session",e);return false}
 }
 function persistSession(){
  try{
-   localStorage.setItem(STORAGE_KEY,JSON.stringify({scenarios,activeId,targetYear,horizonYears,savedAt:new Date().toISOString()}));
+   localStorage.setItem(STORAGE_KEY,JSON.stringify({scenarios,activeId,targetYear,horizonYears,mix,stackedAreaView,savedAt:new Date().toISOString()}));
    const n=document.getElementById("autosaveNote");
    if(n)n.textContent="Autosaved "+new Date().toLocaleTimeString();
  }catch(e){/* storage unavailable — silently skip autosave */}
@@ -378,7 +423,7 @@ function saveSnapshot(){
  try{
    const raw=localStorage.getItem(SNAPSHOT_KEY);
    const store=raw?JSON.parse(raw):{};
-   store[name]={scenarios:clone(scenarios),activeId,targetYear,horizonYears,savedAt:new Date().toISOString()};
+   store[name]={scenarios:clone(scenarios),activeId,targetYear,horizonYears,mix:clone(mix),stackedAreaView,savedAt:new Date().toISOString()};
    localStorage.setItem(SNAPSHOT_KEY,JSON.stringify(store));
    showError('Snapshot "'+escapeHtml(name)+'" saved on this device. Use "Load Snapshot" to bring it back later.');
    setTimeout(clearError,4000);
@@ -394,6 +439,8 @@ function loadSnapshotPrompt(){
  const snap=store[choice];
  scenarios=snap.scenarios; activeId=snap.activeId&&scenarios.some(s=>s.id===snap.activeId)?snap.activeId:scenarios[0].id;
  horizonYears=snap.horizonYears||10; targetYear=snap.targetYear||((+BASELINE.latestYear||2025)+5);
+ mix=snap.mix&&snap.mix.gen&&snap.mix.cons?snap.mix:buildMixDefaults(BASELINE);
+ stackedAreaView=snap.stackedAreaView==="trend"?"trend":"year";
  renderAll();
 }
 
@@ -590,34 +637,74 @@ function computeSeries(s){
 function scenarioAt(s,y){return computeSeries(s).find(r=>r.year===y)||computeSeries(s).at(-1)}
 function enabled(){return scenarios.filter(s=>s.enabled)}
 
+// Per-parameter three-tier evaluation. Each entry returns the current
+// value, its unit, which tier that lands in, and — importantly — the
+// numeric value the parameter would need to reach the next tier(s) up,
+// so a Critical/Watch reading always comes with an actionable target
+// rather than just a colour.
+const PARAM_DEFS=[
+ {key:"grid",label:"Domestic Grid / Substation",unit:"MW",
+  calc:(p,r)=>({current:r.peakDemand,
+    adequateAt:+(p.substationCapacity*0.85).toFixed(0),
+    watchAt:+(p.substationCapacity).toFixed(0),
+    tier:r.peakDemand<=p.substationCapacity*0.85?"Adequate":r.peakDemand<=p.substationCapacity?"Watch":"Critical",
+    note:v=>`Peak load must stay at or below ${fmt(v)} MW`})},
+ {key:"evac",label:"Cross-Border Evacuation",unit:"% curtailed",
+  calc:(p,r)=>{const pct=r.exportPotential>0?r.curtailed/r.exportPotential*100:0;
+    return {current:pct,
+    adequateAt:2,watchAt:15,
+    tier:pct<=2?"Adequate":pct<=15?"Watch":"Critical",
+    note:v=>`Curtailment must stay at or below ${fmt(v,0)}% of exportable surplus`};}},
+ {key:"supply",label:"Domestic Supply Security",unit:"% unmet",
+  calc:(p,r)=>{const pct=r.domesticEnergyDemand>0?r.deficit/r.domesticEnergyDemand*100:0;
+    return {current:pct,
+    adequateAt:0.5,watchAt:5,
+    tier:pct<=0.5?"Adequate":pct<=5?"Watch":"Critical",
+    note:v=>`Unmet demand must stay at or below ${fmt(v,1)}% of total demand`};}},
+ {key:"absorption",label:"India Export Absorption",unit:"%",
+  calc:(p,r)=>({current:p.indiaAbsorption,
+    adequateAt:85,watchAt:60,
+    tier:p.indiaAbsorption>=85?"Adequate":p.indiaAbsorption>=60?"Watch":"Critical",
+    note:v=>`Assumed buyable share needs to reach ${fmt(v,0)}% or more`})},
+ {key:"losses",label:"System (T&D) Losses",unit:"%",
+  calc:(p,r)=>({current:r.systemLossPct,
+    adequateAt:13,watchAt:18,
+    tier:r.systemLossPct<=13?"Adequate":r.systemLossPct<=18?"Watch":"Critical",
+    note:v=>`System losses need to come down to ${fmt(v,1)}% or below`})}
+];
+function paramTiers(s,r){
+ const p=s.params,row=r||scenarioAt(s,targetYear);
+ const out={};
+ PARAM_DEFS.forEach(def=>{out[def.key]={...def.calc(p,row),label:def.label,unit:def.unit,note:def.calc(p,row).note};});
+ return out;
+}
 function riskStatus(s,r){
  // s = the scenario/variant object (holds .params); r = a computed-series
  // row for a given year (holds peakDemand/deficit/etc). Both are required —
  // r defaults to the scenario's target-year row if only s is passed.
- const p=s.params;
- const row=r||scenarioAt(s,targetYear);
- const grid=row.peakDemand<=p.substationCapacity;
- const trade=row.exportPotential===0 || row.curtailed<=.02*row.exportPotential;
- const supply=row.deficit<=1;
- const absorption=p.indiaAbsorption>=85;
- const losses=(row.systemLossPct||0)<=16;
- const risks=[grid,trade,supply,absorption,losses];
- const bad=risks.filter(x=>!x).length;
- return bad>=2?"Critical":bad===1?"Watch":"Adequate";
+ const tiers=paramTiers(s,r);
+ const vals=Object.values(tiers).map(t=>t.tier);
+ const critical=vals.filter(t=>t==="Critical").length;
+ const watch=vals.filter(t=>t==="Watch").length;
+ if(critical>=2 || (critical>=1 && watch>=1))return"Critical";
+ if(critical===1 || watch>=2)return"Watch";
+ if(watch===1)return"Watch";
+ return"Adequate";
 }
 function statusPill(status){
- const c=status==="Adequate"?"good":status==="Watch"?"warn":"bad";
- return `<span class="status-pill ${c}">${status}</span>`;
+ const m=STATUS_META[status]||STATUS_META.Adequate;
+ return `<span class="status-pill ${m.cls}" title="${escapeHtml(m.long)}">${m.label}</span>`;
 }
 
 function renderKpis(){
  const a=active(), r=scenarioAt(a,targetYear), base=scenarioAt(a,+BASELINE.latestYear||2025);
  const status=riskStatus(a,r);
- const bannerCls=status==="Adequate"?"good":status==="Watch"?"warn":"bad";
+ const meta=STATUS_META[status];
+ const bannerCls=meta.cls;
  const bannerIcon=status==="Adequate"?"fa-circle-check":status==="Watch"?"fa-triangle-exclamation":"fa-circle-exclamation";
  document.getElementById("statusBanner").innerHTML=`<div class="status-banner ${bannerCls}">
    <i class="fa-solid ${bannerIcon}" style="font-size:18px"></i>
-   <strong>${escapeHtml(a.name)} at ${targetYear}: ${status}</strong>
+   <strong>${escapeHtml(a.name)} at ${targetYear}: ${meta.label}</strong>
    <span class="sub">Peak ${fmt(r.peakDemand)} MW · ${fmt(r.systemLossPct,1)}% system loss · ${r.deficit>1?fmt(r.deficit)+" GWh import needed":"demand fully met from domestic generation"}</span>
  </div>`;
  document.getElementById("kpis").innerHTML=[
@@ -636,14 +723,22 @@ function renderKpis(){
 }
 function renderAdequacy(){
  const s=active(),r=scenarioAt(s,targetYear),p=s.params;
+ const tiers=paramTiers(s,r);
  const rows=[
-  ["Domestic grid / substation",`Peak ${fmt(r.peakDemand)} MW vs ${fmt(p.substationCapacity)} MW capacity`,r.peakDemand<=p.substationCapacity],
-  ["Cross-border evacuation",`${fmt(r.curtailed)} GWh curtailed from ${fmt(r.exportPotential)} GWh surplus`,r.exportPotential===0||r.curtailed<=.02*r.exportPotential],
-  ["Domestic supply security",r.deficit>1?`Import required: ${fmt(r.deficit)} GWh`:"Generation covers domestic demand",r.deficit<=1],
-  ["India export absorption",`${fmt(p.indiaAbsorption)}% of surplus is assumed buyable`,p.indiaAbsorption>=85],
-  ["System (T&D) losses",`${fmt(r.systemLossPct,1)}% lost (${fmt(r.lossEnergy)} GWh) before reaching ${fmt(r.totalConsumers,0)} consumers`,r.systemLossPct<=16]
+  ["grid","Domestic grid / substation",`Peak ${fmt(r.peakDemand)} MW vs ${fmt(p.substationCapacity)} MW capacity`],
+  ["evac","Cross-border evacuation",`${fmt(r.curtailed)} GWh curtailed from ${fmt(r.exportPotential)} GWh surplus`],
+  ["supply","Domestic supply security",r.deficit>1?`Import required: ${fmt(r.deficit)} GWh`:"Generation covers domestic demand"],
+  ["absorption","India export absorption",`${fmt(p.indiaAbsorption)}% of surplus is assumed buyable`],
+  ["losses","System (T&D) losses",`${fmt(r.systemLossPct,1)}% lost (${fmt(r.lossEnergy)} GWh) before reaching ${fmt(r.totalConsumers,0)} consumers`]
  ];
- document.getElementById("adequacy").innerHTML=rows.map(x=>`<div class="adequacy-row"><div><strong>${x[0]}</strong><small>${x[1]}</small></div>${statusPill(x[2]?"Adequate":"Watch")}</div>`).join("");
+ document.getElementById("adequacy").innerHTML=rows.map(x=>{
+  const t=tiers[x[0]];
+  const needsNote=t.tier!=="Adequate";
+  const targetVal=t.tier==="Critical"?t.watchAt:t.adequateAt;
+  const nextLabel=t.tier==="Critical"?"Needs Attention":"Healthy";
+  const note=needsNote?`<div class="target-note"><strong>To reach ${nextLabel}:</strong> ${t.note(targetVal)} (currently ${fmt(t.current,t.unit==="MW"?0:1)} ${t.unit}).</div>`:"";
+  return `<div class="adequacy-row"><div><strong>${x[1]}</strong><small>${x[2]}</small>${note}</div>${statusPill(t.tier)}</div>`;
+ }).join("");
  const total=r.availableGeneration||1;
  const billedFromGen=Math.max(0,r.domesticConsumption-(r.domesticConsumption/(r.domesticSupply||1))*r.lossEnergy);
  const lossFromGen=Math.max(0,r.domesticConsumption-billedFromGen);
@@ -669,11 +764,19 @@ function renderComparison(){
  document.getElementById("comparisonTable").innerHTML=`<table class="compare"><thead><tr><th>Scenario</th><th>Peak MW</th><th>Demand GWh</th><th>Generation GWh</th><th>Loss %</th><th>Billed GWh</th><th>Consumers</th><th>Import GWh</th><th>Export GWh</th><th>Curtail GWh</th><th>Net Revenue</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
  renderRiskTable();
 }
+function riskCell(t){
+ const m=STATUS_META[t.tier];
+ const targetVal=t.tier==="Adequate"?null:(t.tier==="Critical"?t.watchAt:t.adequateAt);
+ const tip=t.tier==="Adequate"?`Currently ${fmt(t.current,t.unit==="MW"?0:1)} ${t.unit} — within safe range`:`Currently ${fmt(t.current,t.unit==="MW"?0:1)} ${t.unit}. ${t.note(targetVal)}.`;
+ return `<span class="status-pill ${m.cls}" title="${escapeHtml(tip)}">${m.label}</span>`;
+}
 function renderRiskTable(){
  const y=targetYear;
  document.getElementById("riskTable").innerHTML=`<table class="compare"><thead><tr><th>Scenario</th><th>Grid</th><th>Supply</th><th>Evacuation</th><th>Absorption</th><th>Losses</th><th>Overall</th></tr></thead><tbody>`+
- enabled().map(s=>{const r=scenarioAt(s,y),p=s.params;return `<tr><td>${escapeHtml(s.name)}</td><td>${r.peakDemand<=p.substationCapacity?"🟢":"🔴"}</td><td>${r.deficit<=1?"🟢":"🔴"}</td><td>${r.exportPotential===0||r.curtailed<=.02*r.exportPotential?"🟢":"🔴"}</td><td>${p.indiaAbsorption>=85?"🟢":"🟡"}</td><td>${(r.systemLossPct||0)<=16?"🟢":"🟡"}</td><td>${statusPill(riskStatus(s,r))}</td></tr>`}).join("")+
- `</tbody></table>`;
+ enabled().map(s=>{const r=scenarioAt(s,y),tiers=paramTiers(s,r);
+  return `<tr><td>${escapeHtml(s.name)}</td><td>${riskCell(tiers.grid)}</td><td>${riskCell(tiers.supply)}</td><td>${riskCell(tiers.evac)}</td><td>${riskCell(tiers.absorption)}</td><td>${riskCell(tiers.losses)}</td><td>${statusPill(riskStatus(s,r))}</td></tr>`;}).join("")+
+ `</tbody></table>`+
+ `<p class="footer-note" style="margin-top:8px">Hover any status pill for the current value and the threshold needed to reach the next tier. Tiers: <strong>Healthy</strong> (within safe range), <strong>Needs Attention</strong> (approaching a limit), <strong>At Risk</strong> (a limit is being exceeded).</p>`;
 }
 function scoreScenario(s){
  const r=scenarioAt(s,targetYear);
@@ -739,14 +842,25 @@ function renderSankey(){
  if(typeof Chart==="undefined"||!Chart.registry||!Chart.registry.controllers.get)return;
  const hasSankey=(()=>{try{return !!Chart.registry.getController("sankey")}catch(e){return false}})();
  const a=active(), r=scenarioAt(a,targetYear);
+ const genShare=normalizedMix("gen"), consShare=normalizedMix("cons");
  const flows=[];
+ // Supply side — which type of plant the available generation comes from.
+ GEN_MIX_DEFS.forEach(d=>{
+  const v=r.availableGeneration*genShare[d[0]];
+  if(v>0.01)flows.push({from:d[1],to:"Available Generation",flow:v});
+ });
  if(r.domesticConsumption>0.01)flows.push({from:"Available Generation",to:"Domestic Supply",flow:r.domesticConsumption});
  if(r.actualExport>0.01)flows.push({from:"Available Generation",to:"Export Sold",flow:r.actualExport});
  if(r.curtailed>0.01)flows.push({from:"Available Generation",to:"Curtailed (Unused Surplus)",flow:r.curtailed});
  if(r.deficit>0.01)flows.push({from:"Import (Deficit Cover)",to:"Domestic Supply",flow:r.deficit});
  if(r.billedEnergy>0.01)flows.push({from:"Domestic Supply",to:"Billed to Consumers",flow:r.billedEnergy});
  if(r.lossEnergy>0.01)flows.push({from:"Domestic Supply",to:"T&D Losses",flow:r.lossEnergy});
- document.getElementById("sankeyDesc").textContent=`${a.name} at ${targetYear}: ${fmt(r.availableGeneration)} GWh available generation, split across domestic supply, export and curtailment${r.deficit>0.01?", topped up by imports":""}. Of the ${fmt(r.domesticSupply)} GWh reaching the domestic system, ${fmt(r.systemLossPct,1)}% (${fmt(r.lossEnergy)} GWh) is lost in transmission & distribution before billing.`;
+ // Billed side — which consumer category the billed energy is sold to.
+ CONS_MIX_DEFS.forEach(d=>{
+  const v=r.billedEnergy*consShare[d[0]];
+  if(v>0.01)flows.push({from:"Billed to Consumers",to:d[1],flow:v});
+ });
+ document.getElementById("sankeyDesc").textContent=`${a.name} at ${targetYear}: ${fmt(r.availableGeneration)} GWh available generation — sourced across NEA's own plants, NEA subsidiaries and IPPs — split across domestic supply, export and curtailment${r.deficit>0.01?", topped up by imports":""}. Of the ${fmt(r.domesticSupply)} GWh reaching the domestic system, ${fmt(r.systemLossPct,1)}% (${fmt(r.lossEnergy)} GWh) is lost in transmission & distribution; the remaining ${fmt(r.billedEnergy)} GWh is billed across domestic, industrial, commercial and other consumer categories. Plant-type and consumer-category splits are illustrative — adjust them below the chart.`;
  if(sankeyChart){sankeyChart.destroy();sankeyChart=null;}
  if(!hasSankey||!flows.length){
    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
@@ -758,8 +872,11 @@ function renderSankey(){
   "T&D Losses":"#ef6c00",
   "Export Sold":"#00897b","Curtailed (Unused Surplus)":"#f9a825","Import (Deficit Cover)":"#c62828"
  };
+ GEN_MIX_DEFS.forEach(d=>nodeColors[d[1]]=d[2]);
+ CONS_MIX_DEFS.forEach(d=>nodeColors[d[1]]=d[2]);
  const getColor=k=>nodeColors[k]||"#90a4ae";
  sankeyChart=new Chart(canvas,{type:"sankey",data:{datasets:[{data:flows,colorFrom:c=>getColor(c.dataset.data[c.dataIndex].from),colorTo:c=>getColor(c.dataset.data[c.dataIndex].to),colorMode:"gradient",labels:Object.fromEntries(Object.keys(nodeColors).map(k=>[k,k])),font:{size:10}}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>`${c.raw.from} → ${c.raw.to}: ${fmt(c.raw.flow)} GWh`}}}}});
+ document.getElementById("sankeyLegend").innerHTML=[...GEN_MIX_DEFS,...CONS_MIX_DEFS].map(d=>`<span><i style="background:${d[2]}"></i>${d[1]}</span>`).join("");
 }
 
 function renderWaterfall(){
@@ -808,23 +925,75 @@ function renderRadar(){
  radarChart=new Chart(canvas,{type:"radar",data:{labels:RADAR_CRITERIA,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9}}}},scales:{r:{min:0,max:100,ticks:{stepSize:25,backdropColor:"transparent",font:{size:8}},pointLabels:{font:{size:10}}}}}});
 }
 
+const BALANCE_COMPONENTS=[["billedEnergy","Billed to Consumers",PALETTE[0]],["lossEnergy","T&D Losses","#ef6c00"],["actualExport","Export Sold",PALETTE[1]],["curtailed","Curtailed","#f9a825"],["deficit","Import (Deficit)","#c62828"]];
+function renderStackedAreaToggle(){
+ const host=document.getElementById("stackedAreaToggle");
+ if(!host)return;
+ host.innerHTML=[["year",`Selected Year Only (${targetYear})`],["trend",`Full Horizon Trend`]].map(([v,label])=>`<button class="${stackedAreaView===v?"active":""}" onclick="setStackedAreaView('${v}')">${label}</button>`).join("");
+}
+function setStackedAreaView(v){
+ stackedAreaView=v;
+ renderAll();
+}
 function renderStackedArea(){
  const canvas=document.getElementById("stackedAreaChart");
  if(!canvas)return;
  const a=active();
+ const r=scenarioAt(a,targetYear);
+ renderStackedAreaToggle();
+ if(stackedAreaChart){stackedAreaChart.destroy();stackedAreaChart=null;}
+ if(stackedAreaView==="year"){
+  // Selected-year snapshot: works for ANY year on the horizon (whatever
+  // the year scrubber/slider is currently set to), not just the last
+  // year of the planning horizon.
+  document.getElementById("stackedAreaDesc").textContent=`How the ${fmt(r.availableGeneration)} GWh of available generation is used at ${targetYear} for ${a.name}. Move the year slider above to see this breakdown for any year on the horizon.`;
+  const labels=BALANCE_COMPONENTS.map(c=>c[1]);
+  const data=BALANCE_COMPONENTS.map(c=>r[c[0]]);
+  const colors=BALANCE_COMPONENTS.map(c=>c[2]);
+  stackedAreaChart=new Chart(canvas,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${fmt(c.raw)} GWh`}}},scales:{x:{title:{display:true,text:"GWh at "+targetYear}}}}});
+  return;
+ }
  const series=computeSeries(a);
  const labels=series.map(r=>r.year);
  const markIdx=series.findIndex(r=>r.year===targetYear);
  const markerFor=vals=>vals.map((v,i)=>i===markIdx?6:0);
- const datasets=[
-  {label:"Billed to Consumers",data:series.map(r=>r.billedEnergy),backgroundColor:PALETTE[0]+"cc",borderColor:PALETTE[0],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
-  {label:"T&D Losses",data:series.map(r=>r.lossEnergy),backgroundColor:"#ef6c00cc",borderColor:"#ef6c00",fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
-  {label:"Export Sold",data:series.map(r=>r.actualExport),backgroundColor:PALETTE[1]+"cc",borderColor:PALETTE[1],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
-  {label:"Curtailed",data:series.map(r=>r.curtailed),backgroundColor:PALETTE[3]+"cc",borderColor:PALETTE[3],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2},
-  {label:"Import (Deficit)",data:series.map(r=>r.deficit),backgroundColor:"#c62828cc",borderColor:"#c62828",fill:true,stack:"e",pointRadius:markerFor(series),tension:.2}
- ];
- if(stackedAreaChart)stackedAreaChart.destroy();
+ document.getElementById("stackedAreaDesc").textContent=`How domestic use, export and curtailment split the available generation across the full ${horizonYears}-year horizon (${labels[0]}–${labels[labels.length-1]}); the marker tracks your selected year (${targetYear}).`;
+ const datasets=BALANCE_COMPONENTS.map(c=>({label:c[1],data:series.map(r=>r[c[0]]),backgroundColor:c[2]+"cc",borderColor:c[2],fill:true,stack:"e",pointRadius:markerFor(series),tension:.2}));
  stackedAreaChart=new Chart(canvas,{type:"line",data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9}}},tooltip:{mode:"index"}},interaction:{mode:"index",intersect:false},scales:{y:{stacked:true,title:{display:true,text:"GWh"}}}}});
+}
+const GEN_MIX_DEFS=[["nea","NEA (Own Generation)","#1565c0"],["neaSubsidiary","NEA Subsidiary Companies","#00897b"],["ipp","Independent Power Producers (IPP)","#f9a825"]];
+const CONS_MIX_DEFS=[["domestic","Domestic (Residential)","#1565c0"],["industrial","Industrial","#6a1b9a"],["commercial","Commercial","#00897b"],["irrigation","Irrigation & Public Water Supply","#546e7a"],["nonCommercial","Non-Commercial & Community","#8d6e63"],["streetLight","Street Light & Others","#78909c"]];
+function renderMixGroup(hostId,defs,group){
+ const host=document.getElementById(hostId);
+ if(!host||!mix)return;
+ const vals=mix[group];
+ const total=defs.reduce((sum,d)=>sum+(Number(vals[d[0]])||0),0)||1;
+ host.innerHTML=defs.map(d=>`
+  <div class="field">
+   <label><span style="display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:2px;background:${d[2]};display:inline-block"></i>${d[1]}</span> <span>${fmt((Number(vals[d[0]])||0)/total*100,0)}%</span></label>
+   <input type="range" min="0" max="100" step="1" value="${vals[d[0]]||0}" oninput="setMixWeight('${group}','${d[0]}',this.value)">
+  </div>`).join("");
+}
+function renderMixControls(){
+ if(!mix)return;
+ renderMixGroup("genMixControls",GEN_MIX_DEFS,"gen");
+ renderMixGroup("consMixControls",CONS_MIX_DEFS,"cons");
+ document.getElementById("mixTotalNote").textContent="Sliders are normalized automatically — they don't need to sum to 100.";
+}
+function setMixWeight(group,key,v){
+ if(!mix)return;
+ mix[group][key]=Number(v);
+ renderAll();
+}
+function resetMix(){
+ mix=buildMixDefaults(BASELINE);
+ renderAll();
+}
+function normalizedMix(group){
+ const defs=group==="gen"?GEN_MIX_DEFS:CONS_MIX_DEFS;
+ const vals=mix[group];
+ const total=defs.reduce((sum,d)=>sum+(Number(vals[d[0]])||0),0)||1;
+ return Object.fromEntries(defs.map(d=>[d[0],(Number(vals[d[0]])||0)/total]));
 }
 function renderWeightControls(){
  const host=document.getElementById("weightControls");
@@ -854,7 +1023,7 @@ function renderExpectedValue(){
  host.innerHTML=[
   ["Probability-Weighted Net Revenue","NPR "+fmt(expRevenue/1e9,2),"bn at "+targetYear],
   ["Probability-Weighted Import Need",fmt(expDeficit),"GWh"],
-  ["Worst-Case Risk Among Weighted Set",worst,"across enabled variants"]
+  ["Worst-Case Risk Among Weighted Set",STATUS_META[worst].label,"across enabled variants"]
  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong><em>${x[2]}</em></div>`).join("");
 }
 function exportComparisonCsv(){
@@ -862,7 +1031,7 @@ function exportComparisonCsv(){
  const header=["Scenario","Peak MW","Demand GWh","Generation GWh","System Loss %","Billed GWh","Total Consumers","Import GWh","Export GWh","Curtailment GWh","Net Revenue NPR","Status"];
  const rows=list.map(s=>{
    const r=scenarioAt(s,y);
-   return [s.name,r.peakDemand,r.domesticEnergyDemand,r.availableGeneration,r.systemLossPct,r.billedEnergy,Math.round(r.totalConsumers),r.deficit,r.actualExport,r.curtailed,Math.round(r.netRevenue),riskStatus(s,r)];
+   return [s.name,r.peakDemand,r.domesticEnergyDemand,r.availableGeneration,r.systemLossPct,r.billedEnergy,Math.round(r.totalConsumers),r.deficit,r.actualExport,r.curtailed,Math.round(r.netRevenue),STATUS_META[riskStatus(s,r)].label];
  });
  const csv=[header,...rows].map(row=>row.map(v=>{
    const str=String(v);
@@ -884,13 +1053,13 @@ function renderAll(){
  renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("lossControls",controlDefs.loss);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("customControls",controlDefs.custom);
  renderHydro();renderHorizon();renderYearScrubber();renderSummary();renderKpis();renderAdequacy();renderCharts();renderComparison();
  renderRecommendation();renderTornado();renderWeightControls();renderExpectedValue();
- renderSankey();renderWaterfall();renderRadar();renderStackedArea();
+ renderMixControls();renderSankey();renderWaterfall();renderRadar();renderStackedArea();
  persistSession();
 }
 function resetScenarios(){
  if(!confirm("Reset all scenario variants to defaults? This clears the autosaved session on this device (saved snapshots are kept)."))return;
  try{localStorage.removeItem(STORAGE_KEY)}catch(e){}
- initScenarios();renderAll();
+ initScenarios();mix=buildMixDefaults(BASELINE);stackedAreaView="year";renderAll();
 }
 
 async function boot(){
@@ -909,7 +1078,7 @@ async function boot(){
  document.getElementById("status").innerHTML=`<span class="badge good">Scenario Engine Ready</span><span class="badge">Baseline FY ${start}</span><span class="badge">Target ${targetYear}</span><span class="badge">Variants ${scenarios.length||5}</span>`;
  document.getElementById("footnote").textContent=`Baseline data: FY ${start}. The model uses the dashboard's scenario-baseline endpoint where available and falls back to safe defaults if the API is unavailable. Results are screening estimates, not a substitute for detailed production-cost, hydro-energy, transmission or financial models.`;
  const restored=loadSavedSession();
- if(!restored)initScenarios();
+ if(!restored){initScenarios();mix=buildMixDefaults(BASELINE);stackedAreaView="year";}
  renderStages();renderAll();
  if(restored){
    const n=document.getElementById("autosaveNote");
