@@ -977,6 +977,25 @@ def scenario_baseline_data() -> dict:
     total_consumers = _last(cons.get("total"))
     consumer_growth_cagr = _cagr(cons.get("total"), 5, 0.07)
 
+    # Generation-ownership split (NEA-owned plants / NEA subsidiary
+    # companies / Independent Power Producers) and consumer-category split
+    # (domestic, industrial, commercial, ...) of billed energy. The
+    # workbook does not currently carry a per-plant "owner type" column or
+    # a per-category billed-energy breakdown, so these are illustrative
+    # defaults derived from NEA's own published generation-mix snapshots
+    # and NEA/IPPAN consumer-category reporting. They exist so the
+    # Scenario Analysis Sankey/heatmap can show a realistic split of the
+    # aggregate numbers without inventing precision the source data
+    # doesn't have; if `d` ever carries real "generationMix" /
+    # "consumerCategory" sheets, prefer those instead.
+    gen_mix = d.get("generationMix") or {
+        "nea": 20, "neaSubsidiary": 20, "ipp": 60,
+    }
+    consumer_mix = d.get("consumerCategory") or {
+        "domestic": 42, "industrial": 36, "commercial": 9,
+        "irrigation": 5, "nonCommercial": 5, "streetLight": 3,
+    }
+
     return {
         "latestYear": latest_year,
         "peakDemandMW": _last(ae.get("national_peak")),
@@ -996,6 +1015,8 @@ def scenario_baseline_data() -> dict:
         "systemLossImprovementPpPerYear": loss_improvement_pp_per_yr,
         "totalConsumers": total_consumers,
         "consumerGrowthCagr": consumer_growth_cagr,
+        "generationMixPct": gen_mix,
+        "consumerMixPct": consumer_mix,
     }
 
 
