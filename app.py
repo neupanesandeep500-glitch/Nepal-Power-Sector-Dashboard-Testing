@@ -1838,7 +1838,6 @@ def _nea_ticker_segments():
     k = data.get("kpi") or {}
     if not k:
         return []
-    fin = data.get("financial") or {}
     segs = []
 
     def yoy_txt(v):
@@ -1846,8 +1845,6 @@ def _nea_ticker_segments():
             return "n/a"
         return f"{'+' if v >= 0 else ''}{v:,.2f}% YoY"
 
-    segs.append((f"🏭 NEA PEAK DEMAND: {k.get('latest_peak', 0):,.1f} MW ({yoy_txt(k.get('peak_growth'))})",
-                 "#9fd8ff"))
     segs.append((f"📉 NEA SYSTEM LOSS: {k.get('latest_system_loss', 0):,.2f}% "
                  f"({'down' if (k.get('loss_reduction') or 0) >= 0 else 'up'} "
                  f"{abs(k.get('loss_reduction', 0)):,.2f} pts vs last year)", "#ffb4a2"))
@@ -1855,23 +1852,6 @@ def _nea_ticker_segments():
                  "#b9f6ca"))
     segs.append((f"⚡ NEA AVAILABILITY: {k.get('latest_total_avail', 0):,.1f} MU ({yoy_txt(k.get('avail_growth'))})",
                  "#ffe082"))
-
-    # Import / export summary for the latest year, with YoY change
-    imp_mu, exp_mu = fin.get("import_mu") or [], fin.get("export_mu") or []
-    if imp_mu and exp_mu and len(imp_mu) == len(exp_mu):
-        def latest_and_yoy(series):
-            vals = [v for v in series if v is not None]
-            if not vals:
-                return None, None
-            if len(vals) < 2 or not vals[-2]:
-                return vals[-1], None
-            return vals[-1], round((vals[-1] - vals[-2]) / abs(vals[-2]) * 100, 2)
-        imp_latest, imp_yoy = latest_and_yoy(imp_mu)
-        exp_latest, exp_yoy = latest_and_yoy(exp_mu)
-        if imp_latest is not None or exp_latest is not None:
-            segs.append((f"🔁 IMPORT/EXPORT (latest FY): Import {imp_latest or 0:,.1f} MU "
-                         f"({yoy_txt(imp_yoy)}) | Export {exp_latest or 0:,.1f} MU ({yoy_txt(exp_yoy)})",
-                         "#d0bfff"))
 
     try:
         econ = NEA.unit_economics()
@@ -1951,6 +1931,32 @@ def _nea_ticker_segments():
             parts = " | ".join(f"{label} {by_src.get(key, 0):,.0f} MW ({by_src.get(key, 0) / grand * 100:,.1f}%)"
                                 for key, label in src_defs)
             segs.append((f"🔌 POWER MIX (avg. FY {latest_fy}): {parts}", "#e0c3fc"))
+
+    # Live NEA feed (separate, near-real-time Google Sheet — refreshed on
+    # its own short cycle, independent of the annual/monthly operational
+    # workbook above). Replaces the old operational-data-derived peak
+    # demand and import/export segments with these live-sourced figures.
+    live = NEA.live_marquee_data()
+    if live:
+        ts = live.get("neaLastUpdated") or f"{live.get('collectionDate', '')} {live.get('collectionTime', '')}".strip()
+        stale_tag = " ⚠ delayed" if live.get("isStale") else ""
+
+        def _mwh(key):
+            v = live.get(key)
+            return f"{v:,.0f} MWh" if isinstance(v, (int, float)) else "n/a"
+
+        def _mw(key):
+            v = live.get(key)
+            return f"{v:,.0f} MW" if isinstance(v, (int, float)) else "n/a"
+
+        segs.append((f"🔴 LIVE GENERATION (as of {ts}{stale_tag}): NEA {_mwh('neaMwh')} | "
+                     f"NEA Subsidiaries {_mwh('neaSubsidiaryMwh')} | IPP {_mwh('ippMwh')}", "#9fd8ff"))
+        segs.append((f"🔁 LIVE IMPORT/EXPORT: Import {_mwh('importMwh')} | Export {_mwh('exportMwh')} | "
+                     f"Interruption {_mwh('interruptionMwh')}", "#d0bfff"))
+        segs.append((f"📊 LIVE ENERGY DEMAND: Total {_mwh('totalEnergyDemandMwh')} | "
+                     f"National {_mwh('nationalEnergyDemandMwh')}", "#ffe082"))
+        segs.append((f"🏭 LIVE PEAK DEMAND: Total {_mw('totalPeakDemandMw')} | "
+                     f"National {_mw('nationalPeakDemandMw')}", "#ff8a80"))
 
     return segs
 
