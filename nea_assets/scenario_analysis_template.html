@@ -244,15 +244,34 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
     <div class="panel" id="monteCarloPanel">
       <h4><i class="fa-solid fa-shuffle"></i> Monte Carlo Risk Simulation</h4>
-      <p class="desc">Resamples demand, generation, hydrology and macro-economic assumptions thousands of times around the active variant (triangular distribution) to turn a single point estimate into a probability distribution — the same risk-quantification approach used in modern capacity-expansion and energy-transition planning, including a loss-of-load-probability-style adequacy metric.</p>
+      <p class="desc">Turns a single point estimate into a probability distribution — the same risk-quantification approach used in modern capacity-expansion and energy-transition planning. Two modes: a fast single-year snapshot (independent draws), or a full-horizon <strong>Markov-chain</strong> path where hydrology (source-side) and demand growth (load-side) each evolve as persistent, serially-correlated regimes year over year — so a drought or a growth slowdown can cluster across consecutive years instead of being re-randomized every year, which a purely deterministic or i.i.d. approach misses.</p>
       <div class="variant-toolbar" style="align-items:center;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px">Uncertainty band
-          <select id="mcUncertainty"><option value="low">Low (narrow)</option><option value="medium" selected>Medium</option><option value="high">High (wide)</option></select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px">Simulation mode
+          <select id="mcMode" onchange="toggleMcMarkovControls()">
+            <option value="markov" selected>Full-horizon Markov-chain path</option>
+            <option value="snapshot">Single-year snapshot (independent draws)</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px">Macro-driver uncertainty
+          <select id="mcUncertainty" onchange="mcApplyPreset()"><option value="low">Low (narrow)</option><option value="medium" selected>Medium</option><option value="high">High (wide)</option></select>
         </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px">Iterations
           <select id="mcIterations"><option value="500">500</option><option value="1500" selected>1,500</option><option value="3000">3,000</option></select>
         </label>
+        <button type="button" onclick="toggleMcAdvanced()" style="background:transparent;border:1px solid var(--border,#3a4658)"><i class="fa-solid fa-sliders"></i> Customize Spreads</button>
         <button id="mcRunBtn" onclick="runMonteCarlo()"><i class="fa-solid fa-play"></i> Run Monte Carlo Simulation</button>
+      </div>
+      <div id="mcMarkovControls" style="margin-top:12px">
+        <div class="grid3">
+          <div class="field"><label>Hydrology persistence <span id="v-hydroPersistence">0.60</span></label><input type="range" min="0.2" max="0.9" step="0.05" value="0.6" id="hydroPersistence" oninput="document.getElementById('v-hydroPersistence').textContent=(+this.value).toFixed(2)"></div>
+          <div class="field"><label>Demand-regime persistence <span id="v-demandPersistence">0.60</span></label><input type="range" min="0.2" max="0.9" step="0.05" value="0.6" id="demandPersistence" oninput="document.getElementById('v-demandPersistence').textContent=(+this.value).toFixed(2)"></div>
+          <div class="field"><label>NPV discount rate <span id="v-mcDiscount">8.0</span>%</label><input type="range" min="0" max="15" step="0.5" value="8" id="mcDiscount" oninput="document.getElementById('v-mcDiscount').textContent=(+this.value).toFixed(1)"></div>
+        </div>
+        <p class="desc" style="margin-top:6px">Persistence = probability a regime carries into the next year; higher = longer droughts/booms, lower = closer to independent year-to-year draws. States: hydrology {Wet, Normal, Dry, Severe Dry} shift generation ±12%/±24%; demand regime {High, Trend, Slow Growth} shift demand growth ±3 pp/yr. GDP, EV-adoption and induction-cooking assumptions are drawn once per run (scenario-level uncertainty) using the spreads below.</p>
+      </div>
+      <div id="mcAdvanced" style="display:none;margin-top:12px">
+        <p class="desc" style="margin-bottom:8px">Override the ± spread (triangular-distribution half-width, same units as each driver's slider) used when sampling GDP, EV and induction-cooking assumptions each run. Picking a preset above re-fills these; edit any field afterward to fine-tune to your own judgment of the uncertainty.</p>
+        <div class="grid3" id="mcSpreadControls"></div>
       </div>
       <div id="mcResults"></div>
     </div>
@@ -928,24 +947,142 @@ function renderTornado(){
 const MC_BASE_SPREAD={demandGrowth:2.5,capacityGrowth:3,hydrology:10,gdpGrowth:2,evAdoptionGrowth:12,systemLossPct:1.5,indiaAbsorption:15};
 const MC_LEVEL_MULT={low:.5,medium:1,high:1.75};
 const MC_PARAM_BOUNDS={demandGrowth:[0,20],capacityGrowth:[0,25],hydrology:[-30,20],gdpGrowth:[0,18],evAdoptionGrowth:[0,90],systemLossPct:[3,35],indiaAbsorption:[0,100]};
+const MC_PARAM_META=[["demandGrowth","Demand growth","pp/yr"],["capacityGrowth","Generation growth","pp/yr"],["hydrology","Hydrology shock","pp"],["gdpGrowth","GDP growth rate","pp/yr"],["evAdoptionGrowth","EV charging load growth","pp/yr"],["systemLossPct","System (T&D) loss","pp"],["indiaAbsorption","Export absorption","pp"]];
 const MC_MESSAGES=["Sampling demand & hydrology paths…","Resampling macro-economic drivers…","Simulating year-by-year system balance…","Resolving import/export dispatch…","Aggregating percentile bands…","Computing loss-of-load probability…"];
-let mcRunning=false, mcChart=null;
+let mcRunning=false, mcChart=null, mcSpreadControlsBuilt=false;
 
+function renderMcSpreadControls(){
+ if(mcSpreadControlsBuilt)return; // built once — must never be wiped by renderAll() re-renders
+ const host=document.getElementById("mcSpreadControls");
+ if(!host)return;
+ host.innerHTML=MC_PARAM_META.map(([k,label,unit])=>
+   `<div class="field"><label>± ${label} <span>(${unit})</span></label><input type="number" id="mcSpread_${k}" step="0.1" min="0" value="${MC_BASE_SPREAD[k]}"></div>`
+ ).join("");
+ mcSpreadControlsBuilt=true;
+ mcApplyPreset();
+}
+function mcApplyPreset(){
+ const level=document.getElementById("mcUncertainty")?.value||"medium";
+ const mult=MC_LEVEL_MULT[level]??1;
+ MC_PARAM_META.forEach(([k])=>{
+   const el=document.getElementById("mcSpread_"+k);
+   if(el) el.value=Math.round(MC_BASE_SPREAD[k]*mult*100)/100;
+ });
+}
+function toggleMcAdvanced(){
+ const el=document.getElementById("mcAdvanced");
+ if(!el)return;
+ el.style.display=(el.style.display==="none"||!el.style.display)?"block":"none";
+}
+function toggleMcMarkovControls(){
+ const el=document.getElementById("mcMarkovControls");
+ if(!el)return;
+ el.style.display=document.getElementById("mcMode").value==="markov"?"block":"none";
+}
+function mcReadSpreads(){
+ const spreads={};
+ MC_PARAM_META.forEach(([k])=>{
+   const el=document.getElementById("mcSpread_"+k);
+   spreads[k]=el?Math.max(0,parseFloat(el.value)||0):MC_BASE_SPREAD[k];
+ });
+ return spreads;
+}
 function triSample(mode,halfWidth){
  if(!halfWidth || halfWidth<=0) return mode;
  const lo=mode-halfWidth, hi=mode+halfWidth, u=Math.random(), f=.5;
  return u<f ? lo+Math.sqrt(u*(hi-lo)*(mode-lo)) : hi-Math.sqrt((1-u)*(hi-lo)*(hi-mode));
 }
-function mcSampleParams(base,level){
- const mult=MC_LEVEL_MULT[level]??1, p={...base};
- for(const [k,w] of Object.entries(MC_BASE_SPREAD)){
+function mcSampleParams(base,spreads){
+ const p={...base};
+ for(const [k,w] of Object.entries(spreads)){
    if(p[k]==null)continue;
-   let v=triSample(base[k], w*mult);
+   let v=triSample(base[k], w);
    const b=MC_PARAM_BOUNDS[k];
    if(b) v=clamp(v,b[0],b[1]);
    p[k]=v;
  }
  return p;
+}
+
+// ── Markov-chain source/load regimes ────────────────────────────────────
+// Hydrology (supply/"source"-side) and demand growth (load-side) each
+// evolve as their own discrete-state Markov chain across the horizon,
+// instead of being re-drawn independently every year. This is what lets
+// the simulation capture multi-year drought clustering or growth
+// slowdowns — the thing a purely deterministic model or i.i.d. sampling
+// structurally cannot represent, since both treat every year as an
+// unrelated coin-flip.
+const HYDRO_STATES=[{name:"Wet",shockPct:12},{name:"Normal",shockPct:0},{name:"Dry",shockPct:-12},{name:"Severe Dry",shockPct:-24}];
+const DEMAND_STATES=[{name:"High Growth",deltaPp:3},{name:"Trend Growth",deltaPp:0},{name:"Slow Growth",deltaPp:-3}];
+const HYDRO_CENTER=HYDRO_STATES.findIndex(s=>s.name==="Normal");
+const DEMAND_CENTER=DEMAND_STATES.findIndex(s=>s.name==="Trend Growth");
+
+function buildTransitionMatrix(n,centerIdx,persistence){
+ const matrix=[];
+ for(let i=0;i<n;i++){
+   const row=new Array(n).fill(0);
+   row[i]=persistence;
+   if(n===1){matrix.push([1]);continue;}
+   const remaining=1-persistence;
+   const weights=[];
+   for(let j=0;j<n;j++){
+     if(j===i){weights.push(0);continue;}
+     weights.push(1/(1+Math.abs(j-centerIdx))+1/(1+Math.abs(j-i))); // pulls toward center + prefers small steps
+   }
+   const wSum=weights.reduce((s,v)=>s+v,0)||1;
+   for(let j=0;j<n;j++) if(j!==i) row[j]=remaining*(weights[j]/wSum);
+   matrix.push(row);
+ }
+ return matrix;
+}
+function sampleNextState(matrix,i){
+ const r=Math.random(); let cum=0;
+ for(let j=0;j<matrix[i].length;j++){cum+=matrix[i][j]; if(r<=cum)return j;}
+ return matrix[i].length-1;
+}
+
+/** Simulates one full stochastic path across the horizon: hydrology and
+ * demand-growth regimes switch year-to-year via their Markov chains;
+ * GDP/EV/induction assumptions are drawn once for the whole run (they're
+ * scenario-level judgments, not something that should flip annually).
+ * Returns horizon-level risk metrics, not just one year's snapshot. */
+function simulateMarkovPath(base,spreads,hydroPersistence,demandPersistence,discountRate){
+ const b=BASELINE, m=b.macro||{};
+ const hydroMatrix=buildTransitionMatrix(HYDRO_STATES.length,HYDRO_CENTER,hydroPersistence);
+ const demandMatrix=buildTransitionMatrix(DEMAND_STATES.length,DEMAND_CENTER,demandPersistence);
+ let hydroIdx=HYDRO_CENTER, demandIdx=DEMAND_CENTER;
+ const macroParams=mcSampleParams(base,spreads);
+ const gdpBaselinePct=Number.isFinite(+m.gdpGrowthBaselinePct)?+m.gdpGrowthBaselinePct:9.1;
+ const gdpUpliftPct=clamp(((macroParams.gdpGrowth??gdpBaselinePct)-gdpBaselinePct)*(macroParams.gdpElasticity??1),-6,10);
+ const evBaseGWh=Number.isFinite(+m.evBaseGWh)?+m.evBaseGWh:0;
+ const inductionBaseIndex=Number.isFinite(+m.inductionPenetrationIndex)?+m.inductionPenetrationIndex:0;
+ const inductionFullUpliftPct=8;
+ const baseYear=+b.latestYear||2025, baseConsumers=+b.totalConsumers||5200000;
+ let demand=+b.domesticEnergyGWh, genTrend=+b.totalAvailabilityGWh;
+ let npv=0, deficitYears=0, consecutiveDeficit=0, maxConsecutiveDeficit=0;
+ let lastRow=null;
+ for(let t=0;t<=horizonYears;t++){
+   if(t>0){hydroIdx=sampleNextState(hydroMatrix,hydroIdx); demandIdx=sampleNextState(demandMatrix,demandIdx); demand*=1+((base.demandGrowth||0)+DEMAND_STATES[demandIdx].deltaPp+gdpUpliftPct)/100; genTrend*=1+(base.capacityGrowth||0)/100;}
+   const organicGrowthFactor=Math.pow(1+(base.demandGrowth||0)/100,t);
+   const evExtraGWh=Math.max(0,evBaseGWh*(Math.pow(1+(macroParams.evAdoptionGrowth||0)/100,t)-organicGrowthFactor));
+   const inductionIndex=clamp(inductionBaseIndex+(macroParams.inductionGrowth||0)/100*t,0,1);
+   const inductionExtraGWh=Math.max(0,+b.domesticEnergyGWh*(inductionFullUpliftPct/100)*(inductionIndex-inductionBaseIndex));
+   const demandWithMacro=demand+evExtraGWh+inductionExtraGWh;
+   const gen=genTrend*(1+HYDRO_STATES[hydroIdx].shockPct/100);
+   const deficit=Math.max(0,demandWithMacro-gen), surplus=Math.max(0,gen-demandWithMacro);
+   const maxExport=(base.evacCapacity*8760*(base.evacUtil/100))/1000;
+   const india=surplus*(base.indiaAbsorption/100);
+   const exportSold=Math.min(surplus,maxExport,india);
+   const systemLossPct=clamp((base.systemLossPct||12.5)-(base.lossImprovement||0)*t,3,35);
+   const domesticSupply=Math.min(gen,demandWithMacro)+deficit;
+   const billedEnergy=Math.max(0,domesticSupply*(1-systemLossPct/100));
+   const netRevenue=billedEnergy*1e6*base.domesticTariff+exportSold*1e6*base.exportPrice-deficit*1e6*base.importPrice;
+   npv+=netRevenue/Math.pow(1+(discountRate||0)/100,t);
+   if(deficit>0.01){deficitYears++; consecutiveDeficit++; maxConsecutiveDeficit=Math.max(maxConsecutiveDeficit,consecutiveDeficit);}
+   else consecutiveDeficit=0;
+   lastRow={year:baseYear+t,netRevenue,deficit,hydroState:HYDRO_STATES[hydroIdx].name,demandState:DEMAND_STATES[demandIdx].name};
+ }
+ return {npv,deficitYears,maxConsecutiveDeficit,finalNetRevenue:lastRow.netRevenue,finalDeficit:lastRow.deficit,finalHydroState:lastRow.hydroState,finalDemandState:lastRow.demandState};
 }
 function percentile(sorted,p){
  if(!sorted.length)return 0;
@@ -956,10 +1093,11 @@ async function runMonteCarlo(){
  if(mcRunning)return;
  mcRunning=true;
  const btn=document.getElementById("mcRunBtn");
+ const mode=document.getElementById("mcMode").value;
  const level=document.getElementById("mcUncertainty").value;
+ const spreads=mcReadSpreads();
  const iterations=parseInt(document.getElementById("mcIterations").value,10);
  const a=active(), baseParams=a.params, y=targetYear;
- const netRevenues=[], deficitFlags=[], curtailFlags=[], deficitGWh=[];
  let msgIdx=0;
  const spin=setInterval(()=>{
    btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> ${MC_MESSAGES[msgIdx%MC_MESSAGES.length]}`;
@@ -967,32 +1105,64 @@ async function runMonteCarlo(){
  },350);
  btn.disabled=true;
  const chunk=Math.max(50,Math.round(iterations/12));
- for(let i=0;i<iterations;i++){
-   const p=mcSampleParams(baseParams,level);
-   const row=scenarioAt({params:p},y);
-   netRevenues.push(row.netRevenue);
-   deficitFlags.push(row.deficit>0.01?1:0);
-   curtailFlags.push(row.curtailed>0.01?1:0);
-   if(row.deficit>0.01) deficitGWh.push(row.deficit);
-   if(i%chunk===0) await new Promise(r=>setTimeout(r,0)); // yield to the UI thread
+
+ if(mode==="markov"){
+   const hydroPersistence=+document.getElementById("hydroPersistence").value;
+   const demandPersistence=+document.getElementById("demandPersistence").value;
+   const discountRate=+document.getElementById("mcDiscount").value;
+   const npvs=[],deficitYearsArr=[],maxConsecArr=[],atLeastOneDeficit=[],atLeastTwoConsec=[];
+   for(let i=0;i<iterations;i++){
+     const res=simulateMarkovPath(baseParams,spreads,hydroPersistence,demandPersistence,discountRate);
+     npvs.push(res.npv);
+     deficitYearsArr.push(res.deficitYears);
+     maxConsecArr.push(res.maxConsecutiveDeficit);
+     atLeastOneDeficit.push(res.deficitYears>0?1:0);
+     atLeastTwoConsec.push(res.maxConsecutiveDeficit>=2?1:0);
+     if(i%chunk===0) await new Promise(r=>setTimeout(r,0));
+   }
+   clearInterval(spin); mcRunning=false; btn.disabled=false;
+   btn.innerHTML=`<i class="fa-solid fa-play"></i> Run Monte Carlo Simulation`;
+   npvs.sort((x,z)=>x-z);
+   const p5=percentile(npvs,.05),p10=percentile(npvs,.10),p50=percentile(npvs,.50),p90=percentile(npvs,.90),p95=percentile(npvs,.95);
+   const deficitProb=atLeastOneDeficit.reduce((s,v)=>s+v,0)/iterations*100;
+   const clusterProb=atLeastTwoConsec.reduce((s,v)=>s+v,0)/iterations*100;
+   const avgDeficitYears=deficitYearsArr.reduce((s,v)=>s+v,0)/iterations;
+   const avgMaxConsec=maxConsecArr.reduce((s,v)=>s+v,0)/iterations;
+   renderMcResults({mode,values:npvs,p5,p10,p50,p90,p95,deficitProb,clusterProb,avgDeficitYears,avgMaxConsec,iterations,level,hydroPersistence,demandPersistence,discountRate,horizonYears});
+ }else{
+   const netRevenues=[], deficitFlags=[], curtailFlags=[], deficitGWh=[];
+   for(let i=0;i<iterations;i++){
+     const p=mcSampleParams(baseParams,spreads);
+     const row=scenarioAt({params:p},y);
+     netRevenues.push(row.netRevenue);
+     deficitFlags.push(row.deficit>0.01?1:0);
+     curtailFlags.push(row.curtailed>0.01?1:0);
+     if(row.deficit>0.01) deficitGWh.push(row.deficit);
+     if(i%chunk===0) await new Promise(r=>setTimeout(r,0));
+   }
+   clearInterval(spin); mcRunning=false; btn.disabled=false;
+   btn.innerHTML=`<i class="fa-solid fa-play"></i> Run Monte Carlo Simulation`;
+   netRevenues.sort((x,z)=>x-z);
+   const p5=percentile(netRevenues,.05),p10=percentile(netRevenues,.10),p50=percentile(netRevenues,.50),p90=percentile(netRevenues,.90),p95=percentile(netRevenues,.95);
+   const deficitProb=deficitFlags.reduce((s,v)=>s+v,0)/deficitFlags.length*100;
+   const curtailProb=curtailFlags.reduce((s,v)=>s+v,0)/curtailFlags.length*100;
+   const avgDeficit=deficitGWh.length?deficitGWh.reduce((s,v)=>s+v,0)/deficitGWh.length:0;
+   const baseRevenue=netRevenueAt(a,y);
+   renderMcResults({mode,values:netRevenues,p5,p10,p50,p90,p95,deficitProb,curtailProb,avgDeficit,baseRevenue,iterations,level,year:y});
  }
- clearInterval(spin);
- mcRunning=false;
- btn.disabled=false;
- btn.innerHTML=`<i class="fa-solid fa-play"></i> Run Monte Carlo Simulation`;
- netRevenues.sort((x,z)=>x-z);
- const p5=percentile(netRevenues,.05), p10=percentile(netRevenues,.10), p50=percentile(netRevenues,.50),
-       p90=percentile(netRevenues,.90), p95=percentile(netRevenues,.95);
- const mean=netRevenues.reduce((s,v)=>s+v,0)/netRevenues.length;
- const deficitProb=deficitFlags.reduce((s,v)=>s+v,0)/deficitFlags.length*100;
- const curtailProb=curtailFlags.reduce((s,v)=>s+v,0)/curtailFlags.length*100;
- const avgDeficit=deficitGWh.length?deficitGWh.reduce((s,v)=>s+v,0)/deficitGWh.length:0;
- const baseRevenue=netRevenueAt(a,y);
- renderMcResults({netRevenues,p5,p10,p50,p90,p95,mean,deficitProb,curtailProb,avgDeficit,baseRevenue,iterations,level,year:y});
 }
 function renderMcResults(r){
  const host=document.getElementById("mcResults");
- const kpis=[
+ const isMarkov=r.mode==="markov";
+ const unit=isMarkov?"NPV":"Net Revenue";
+ const kpis=isMarkov?[
+  ["P50 (Median) "+unit,"NPR "+fmt(r.p50/1e9,2)+" bn","over "+(r.horizonYears+1)+"-yr horizon, "+fmt(r.discountRate,1)+"% discount"],
+  ["P10 – P90 Range","NPR "+fmt(r.p10/1e9,2)+" – "+fmt(r.p90/1e9,2)+" bn","80% confidence interval"],
+  ["Value at Risk (P5)","NPR "+fmt(r.p5/1e9,2)+" bn","5% chance of NPV below this"],
+  ["Any Deficit-Year Probability",fmt(r.deficitProb,1)+"%","share of paths with ≥1 shortfall year"],
+  ["Drought-Clustering Risk",fmt(r.clusterProb,1)+"%","share of paths with ≥2 consecutive deficit years"],
+  ["Avg. Consecutive Deficit Length",fmt(r.avgMaxConsec,2)+" yrs","expected worst run of back-to-back shortfall years"]
+ ]:[
   ["P50 (Median) Net Revenue","NPR "+fmt(r.p50/1e9,2)+" bn","at "+r.year],
   ["P10 – P90 Range","NPR "+fmt(r.p10/1e9,2)+" – "+fmt(r.p90/1e9,2)+" bn","80% confidence interval"],
   ["Value at Risk (P5)","NPR "+fmt(r.p5/1e9,2)+" bn",fmt((r.baseRevenue-r.p5)/1e9,2)+" bn below base case"],
@@ -1000,14 +1170,20 @@ function renderMcResults(r){
   ["Curtailment Probability",fmt(r.curtailProb,1)+"%","share of runs with excess/curtailed energy"],
   ["Avg. Deficit (when it occurs)",fmt(r.avgDeficit)+" GWh","conditional on a shortfall year"]
  ];
- host.innerHTML=`<div class="kpis" style="margin:14px 0">${kpis.map(([label,val,sub])=>`<div class="kpi"><small>${label}</small><strong>${val}</strong><em>${sub}</em></div>`).join("")}</div><div class="chart-box"><canvas id="mcHistogram"></canvas></div><p class="desc" style="margin-top:8px">Distribution of net revenue at ${r.year} across ${r.iterations.toLocaleString()} runs (${r.level} uncertainty band). Dashed lines mark P10 / P50 / P90.</p>`;
+ const caption=isMarkov
+  ?`Distribution of ${(r.horizonYears+1)}-year discounted net-revenue (NPV) across ${r.iterations.toLocaleString()} Markov-chain paths (hydrology persistence ${fmt(r.hydroPersistence,2)}, demand-regime persistence ${fmt(r.demandPersistence,2)}). Highlighted bars mark the P10 / P50 / P90 bins.`
+  :`Distribution of net revenue at ${r.year} across ${r.iterations.toLocaleString()} independent runs (${r.level} uncertainty band, spreads as set above). Highlighted bars mark the P10 / P50 / P90 bins.`;
+ host.innerHTML=`<div class="kpis" style="margin:14px 0">${kpis.map(([label,val,sub])=>`<div class="kpi"><small>${label}</small><strong>${val}</strong><em>${sub}</em></div>`).join("")}</div><div class="chart-box"><canvas id="mcHistogram"></canvas></div><p class="desc" style="margin-top:8px">${caption}</p>`;
  const canvas=document.getElementById("mcHistogram");
- const bins=24, min=r.netRevenues[0], max=r.netRevenues.at(-1), width=(max-min)/bins||1;
+ const bins=24, min=r.values[0], max=r.values.at(-1), width=(max-min)/bins||1;
  const counts=new Array(bins).fill(0);
- r.netRevenues.forEach(v=>{const idx=Math.min(bins-1,Math.max(0,Math.floor((v-min)/width)));counts[idx]++;});
+ r.values.forEach(v=>{const idx=Math.min(bins-1,Math.max(0,Math.floor((v-min)/width)));counts[idx]++;});
  const labels=counts.map((_,i)=>fmt((min+i*width)/1e9,1));
+ const binOf=v=>Math.min(bins-1,Math.max(0,Math.floor((v-min)/width)));
+ const p10Bin=binOf(r.p10), p50Bin=binOf(r.p50), p90Bin=binOf(r.p90);
+ const colors=counts.map((_,i)=>i===p50Bin?"#ffd166":(i===p10Bin||i===p90Bin)?"#ff8a80":PALETTE[2]);
  if(mcChart)mcChart.destroy();
- mcChart=new Chart(canvas,{type:"bar",data:{labels,datasets:[{label:"Runs",data:counts,backgroundColor:PALETTE[2],borderRadius:2,barPercentage:1,categoryPercentage:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>"NPR "+c[0].label+" bn"}}},scales:{x:{title:{display:true,text:"Net revenue (NPR bn)"},ticks:{maxTicksLimit:8}},y:{title:{display:true,text:"# of runs"}}}}});
+ mcChart=new Chart(canvas,{type:"bar",data:{labels,datasets:[{label:"Runs",data:counts,backgroundColor:colors,borderRadius:2,barPercentage:1,categoryPercentage:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>"NPR "+c[0].label+" bn",label:c=>{const i=c.dataIndex;const tag=i===p50Bin?" (P50 median)":(i===p10Bin?" (P10)":i===p90Bin?" (P90)":"");return c.raw+" runs"+tag;}}}},scales:{x:{title:{display:true,text:(isMarkov?"NPV":"Net revenue")+" (NPR bn)"},ticks:{maxTicksLimit:8}},y:{title:{display:true,text:"# of runs"}}}}});
 }
 
 function renderSankey(){
@@ -1253,7 +1429,7 @@ async function boot(){
  document.getElementById("footnote").textContent=`Baseline data: FY ${start}. The model uses the dashboard's scenario-baseline endpoint where available and falls back to safe defaults if the API is unavailable. Results are screening estimates, not a substitute for detailed production-cost, hydro-energy, transmission or financial models.`;
  const restored=loadSavedSession();
  if(!restored){initScenarios();mix=buildMixDefaults(BASELINE);stackedAreaView="year";}
- renderStages();renderAll();
+ renderStages();renderAll();renderMcSpreadControls();toggleMcMarkovControls();
  if(restored){
    const n=document.getElementById("autosaveNote");
    if(n)n.textContent="Restored your last session on this device";
