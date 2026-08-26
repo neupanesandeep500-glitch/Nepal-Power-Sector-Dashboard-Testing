@@ -20,8 +20,12 @@ h3{font-size:16px} h4{font-size:13px;color:#37425a}
 .badge{display:inline-block;padding:3px 8px;border-radius:20px;background:#eef3fb;color:#0d47a1;font-size:10px;font-weight:800;margin-right:4px}
 .good{background:#e7f5ea;color:#176b25}.warn{background:#fff4d6;color:#8a5a00}.bad{background:#fdecea;color:#a72820}
 .stage-nav{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:15px}
-.stage{border:1px solid #d7e2f5;background:#f7f9fc;border-radius:9px;padding:10px 8px;cursor:pointer;text-align:center;font-size:11px;font-weight:800;color:#55627a}
-.stage.active{background:#0d47a1;color:white;border-color:#0d47a1}.stage.done{background:#e7f5ea;color:#176b25}
+.stage{border:1px solid #d7e2f5;background:linear-gradient(180deg,#ffffff,#f3f6fb);border-radius:10px;padding:11px 8px;cursor:pointer;text-align:center;font-size:11px;font-weight:800;color:#55627a;box-shadow:0 1px 2px rgba(20,30,60,.05);transition:all .15s ease;position:relative}
+.stage:hover{background:linear-gradient(180deg,#ffffff,#eaf1fc);border-color:#a9c3ec;color:#0d47a1;transform:translateY(-1px);box-shadow:0 3px 8px rgba(20,30,60,.09)}
+.stage.active{background:linear-gradient(180deg,#1a5cc4,#0d47a1);color:#fff;border-color:#0d47a1;box-shadow:0 3px 10px rgba(13,71,161,.35);transform:translateY(-1px)}
+.stage.done{background:linear-gradient(180deg,#f1faf2,#e7f5ea);color:#176b25;border-color:#c7e6cd}
+.stage.done.active{background:linear-gradient(180deg,#1a5cc4,#0d47a1);color:#fff;border-color:#0d47a1}
+.stage i{display:block;font-size:14px;margin-bottom:4px;opacity:.85}
 .stage i{display:block;font-size:15px;margin-bottom:5px}
 .stage-panel{display:none}.stage-panel.active{display:block}
 .variant-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
@@ -35,24 +39,28 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .variant-actions button{padding:5px 8px;font-size:10px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.mc-layout{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin-top:10px}
-.mc-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px}
-.mc-side-block{background:rgba(255,255,255,.03);border:1px solid var(--border,#3a4658);border-radius:10px;padding:12px}
+.mc-layout,.side-layout{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin-top:10px}
+.mc-sidebar,.side-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px}
+.mc-side-block,.side-block{background:rgba(255,255,255,.03);border:1px solid var(--border,#3a4658);border-radius:10px;padding:12px}
 .mc-method-toggle{display:flex;flex-direction:column;gap:8px}
 .mc-method-opt{display:flex;align-items:flex-start;gap:8px;padding:8px;border:1px solid var(--border,#3a4658);border-radius:8px;cursor:pointer;font-size:12.5px}
 .mc-method-opt input{margin-top:3px}
 .mc-method-opt small{display:block;opacity:.7;font-weight:400;margin-top:2px}
-.mc-results{min-width:0}
+.mc-results,.side-content{min-width:0}
 .risk-board{width:100%;border-collapse:collapse;font-size:12.5px;margin:12px 0}
 .risk-board th,.risk-board td{padding:7px 9px;text-align:right;border-bottom:1px solid var(--border,#3a4658)}
 .risk-board th:first-child,.risk-board td:first-child{text-align:left}
 .risk-board thead th{font-weight:700;opacity:.75;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
 .risk-board tbody tr:hover{background:rgba(255,255,255,.04);cursor:pointer}
 .risk-board tr.mc-row-selected{background:rgba(120,170,255,.12)}
-@media (max-width:820px){.mc-layout{grid-template-columns:1fr}.mc-sidebar{position:static}}
+@media (max-width:820px){.mc-layout,.side-layout{grid-template-columns:1fr}.mc-sidebar,.side-sidebar{position:static}}
 @media(max-width:900px){.grid,.grid3{grid-template-columns:1fr}.stage-nav{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:560px){.stage-nav{grid-template-columns:repeat(2,1fr)}}
 .field{margin-bottom:11px}.field label{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:#37425a;margin-bottom:4px}
+.field-name{display:flex;align-items:center;gap:6px}
+.field-toggle{margin:0;cursor:pointer;accent-color:#0d47a1}
+.field-locked{opacity:.5}
+.field-locked input[type=range]{cursor:not-allowed}
 .field label span{color:#0d47a1}.field input[type=range]{width:100%;accent-color:#1565c0}.field select,.field input[type=text],.field input[type=number]{width:100%;border:1px solid #d8e1ee;border-radius:7px;padding:8px;font-size:11px;background:#fff}
 .section-label{text-transform:uppercase;letter-spacing:.06em;color:#0d47a1;font-weight:800;font-size:10px;margin:13px 0 7px}
 .preset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
@@ -69,6 +77,13 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .flow{height:30px;display:flex;border-radius:7px;overflow:hidden;border:1px solid #e1e6ef}.flow div{display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:800}
 .adequacy{display:grid;gap:7px}.adequacy-row{display:flex;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px solid #eef1f6}.adequacy-row:last-child{border-bottom:0}.adequacy-row strong{font-size:11px}.adequacy-row small{display:block;color:#8894a8;font-size:9px;margin-top:2px}
 .footer-note{font-size:10px;color:#8894a8;line-height:1.55}
+.diagnosis-item{border-left:4px solid #d32f2f;background:rgba(211,47,47,.05);border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:10px}
+.diagnosis-item.ok{border-left-color:#2e7d32;background:rgba(46,125,50,.05)}
+.diagnosis-item .issue{font-weight:700;font-size:13px;margin-bottom:6px;color:#243047}
+.diagnosis-item ul{margin:0;padding-left:18px;font-size:12.5px;color:#37425a}
+.diagnosis-item li{margin-bottom:3px}
+.limitations-list{margin:0;padding-left:20px;font-size:12.5px;color:#37425a;line-height:1.6}
+.limitations-list li{margin-bottom:8px}
 .hidden{display:none!important}
 .year-panel{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
 .year-readout{min-width:150px}
@@ -148,51 +163,57 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 
   <div id="stage2" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-chart-line"></i> Stage 2 — Demand & Generation</h4>
-      <p class="desc">Define demand growth, the development rate of available generation, and how consumer connections and system (T&amp;D) losses evolve over the horizon. These assumptions are applied annually unless a staged year is selected later.</p>
-      <div class="grid3">
-        <div>
-          <div class="section-label">Demand</div>
-          <div id="demandControls"></div>
+      <h4><i class="fa-solid fa-chart-line"></i> Stage 2 — Demand, Generation &amp; Macro Drivers</h4>
+      <p class="desc">Adjust filters on the left — applied annually across the horizon unless a staged year is selected later. Macro-economic context and calibrated defaults are shown on the right; leaving a macro slider untouched reproduces the historical trend already embedded in demand/generation, so nothing is double-counted.</p>
+      <div class="side-layout">
+        <div class="side-sidebar">
+          <div class="side-block">
+            <div class="section-label">Demand</div>
+            <div id="demandControls"></div>
+          </div>
+          <div class="side-block">
+            <div class="section-label">Generation</div>
+            <div id="generationControls"></div>
+          </div>
+          <div class="side-block">
+            <div class="section-label">Consumers &amp; System Losses</div>
+            <div id="lossControls"></div>
+          </div>
+          <div class="side-block">
+            <div class="section-label">Macroeconomic Drivers</div>
+            <div id="macroControls"></div>
+          </div>
         </div>
-        <div>
-          <div class="section-label">Generation</div>
-          <div id="generationControls"></div>
+        <div class="side-content">
+          <div class="section-label">Macro-Economic Context</div>
+          <div class="kpis" id="macroContext"></div>
+          <div class="footer-note" id="macroNote"></div>
         </div>
-        <div>
-          <div class="section-label">Consumers &amp; System Losses</div>
-          <div id="lossControls"></div>
-        </div>
-      </div>
-    </div>
-    <div class="panel">
-      <h4><i class="fa-solid fa-coins"></i> Macroeconomic Drivers</h4>
-      <p class="desc">GDP growth, EV-charging load and electric-induction-cooking adoption, sourced from Nepal's Economic Survey and NEA e-mobility/tourism reporting. Defaults are calibrated so leaving every slider untouched reproduces the historical trend already embedded in the demand/generation assumptions above — raising a slider models growth accelerating <em>beyond</em> that trend, so nothing is double-counted.</p>
-      <div class="kpis" id="macroContext" style="margin-bottom:14px"></div>
-      <div class="grid">
-        <div id="macroControls"></div>
-        <div class="footer-note" id="macroNote"></div>
       </div>
     </div>
   </div>
 
   <div id="stage3" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-cloud-sun"></i> Stage 3 — Hydrology & Supply Security</h4>
+      <h4><i class="fa-solid fa-cloud-sun"></i> Stage 3 — Hydrology &amp; Supply Security</h4>
       <p class="desc">Select a normal, wet, dry or severe-dry planning condition. For multi-year planning, a shock can be assigned to a specific year rather than permanently reducing all years.</p>
-      <div class="preset-grid">
-        <div class="preset" onclick="setHydro('normal')"><strong>Normal Year</strong><small>0% generation shock</small></div>
-        <div class="preset" onclick="setHydro('wet')"><strong>Wet Year</strong><small>+8% generation</small></div>
-        <div class="preset" onclick="setHydro('dry')"><strong>Dry Year</strong><small>-12% generation</small></div>
-        <div class="preset" onclick="setHydro('severe')"><strong>Severe Dry</strong><small>-20% generation</small></div>
-      </div>
-      <div class="grid" style="margin-top:14px">
-        <div>
-          <div id="hydroControls"></div>
+      <div class="side-layout">
+        <div class="side-sidebar">
+          <div class="side-block">
+            <div class="section-label">Hydrology Shock</div>
+            <div id="hydroControls"></div>
+            <div class="field"><label>Shock year <span id="hydroYearLabel"></span></label><select id="hydroYear"></select></div>
+            <div class="field"><label>Duration <span>years</span></label><input id="hydroDuration" type="number" min="1" max="5" step="1"></div>
+          </div>
         </div>
-        <div>
-          <div class="field"><label>Hydrology shock year <span id="hydroYearLabel"></span></label><select id="hydroYear"></select></div>
-          <div class="field"><label>Apply shock duration <span>years</span></label><input id="hydroDuration" type="number" min="1" max="5" step="1"></div>
+        <div class="side-content">
+          <div class="section-label">Quick Presets</div>
+          <div class="preset-grid">
+            <div class="preset" onclick="setHydro('normal')"><strong>Normal Year</strong><small>0% generation shock</small></div>
+            <div class="preset" onclick="setHydro('wet')"><strong>Wet Year</strong><small>+8% generation</small></div>
+            <div class="preset" onclick="setHydro('dry')"><strong>Dry Year</strong><small>-12% generation</small></div>
+            <div class="preset" onclick="setHydro('severe')"><strong>Severe Dry</strong><small>-20% generation</small></div>
+          </div>
         </div>
       </div>
     </div>
@@ -200,16 +221,22 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 
   <div id="stage4" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-right-left"></i> Stage 4 — Cross-Border Trade & Grid</h4>
+      <h4><i class="fa-solid fa-right-left"></i> Stage 4 — Cross-Border Trade &amp; Grid</h4>
       <p class="desc">Test export absorption, evacuation limits, line utilization and domestic grid/substation capacity.</p>
-      <div class="grid">
-        <div>
-          <div class="section-label">Trade</div>
-          <div id="tradeControls"></div>
+      <div class="side-layout">
+        <div class="side-sidebar">
+          <div class="side-block">
+            <div class="section-label">Trade</div>
+            <div id="tradeControls"></div>
+          </div>
+          <div class="side-block">
+            <div class="section-label">Grid</div>
+            <div id="gridControls"></div>
+          </div>
         </div>
-        <div>
-          <div class="section-label">Grid</div>
-          <div id="gridControls"></div>
+        <div class="side-content">
+          <div class="section-label">Live Trade &amp; Grid Snapshot — <span id="tradeSnapshotYear"></span></div>
+          <div class="kpis" id="tradeSnapshot"></div>
         </div>
       </div>
     </div>
@@ -217,12 +244,12 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 
   <div id="stage5" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-sliders"></i> Stage 5 — Custom Variant & Planning Horizon</h4>
+      <h4><i class="fa-solid fa-sliders"></i> Stage 5 — Custom Variant &amp; Planning Horizon</h4>
       <p class="desc">Fine-tune the active variant. Use the horizon buttons to compare 5, 10, 15 or 20 years.</p>
       <div class="horizon" id="horizon"></div>
-      <div class="grid" style="margin-top:14px">
-        <div id="customControls"></div>
-        <div>
+      <div class="side-layout" style="margin-top:14px">
+        <div class="side-sidebar" id="customControls"></div>
+        <div class="side-content">
           <div class="section-label">Active variant summary</div>
           <div id="activeSummary"></div>
         </div>
@@ -323,26 +350,24 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
   </div>
 
-  <div class="grid">
-    <div class="panel">
-      <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
-      <p class="desc" id="sankeyDesc"></p>
-      <div class="chart-box sankey-tall"><canvas id="sankeyChart"></canvas></div>
-      <div id="sankeyLegend" class="legend-note"></div>
-      <div class="section-label" style="margin-top:14px">Plant Mix &amp; Consumer Mix (Illustrative Split)</div>
-      <p class="desc" style="margin-bottom:8px">Splits the modelled generation and billed-energy totals across power-plant ownership types and consumer categories, following NEA's published generation-mix and consumer-category patterns. Adjust if you have more current figures — the underlying scenario numbers (generation, billed energy, losses, etc.) are unchanged.</p>
-      <div class="mix-group-label">Generation by Plant Type</div>
-      <div class="mix-grid" id="genMixControls"></div>
-      <div class="mix-group-label">Billed Energy by Consumer Type</div>
-      <div class="mix-grid" id="consMixControls"></div>
-      <div class="mix-total-note" id="mixTotalNote"></div>
-      <div class="variant-toolbar" style="margin-top:8px"><button onclick="resetMix()"><i class="fa-solid fa-rotate-left"></i> Reset Mix to Defaults</button></div>
-    </div>
-    <div class="panel">
-      <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
-      <p class="desc">How domestic sales, export sales and import purchases combine into net revenue at the selected year.</p>
-      <div class="chart-box"><canvas id="waterfallChart"></canvas></div>
-    </div>
+  <div class="panel">
+    <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
+    <p class="desc" id="sankeyDesc"></p>
+    <div class="chart-box sankey-tall"><canvas id="sankeyChart"></canvas></div>
+    <div id="sankeyLegend" class="legend-note"></div>
+    <div class="section-label" style="margin-top:14px">Plant Mix &amp; Consumer Mix (Illustrative Split)</div>
+    <p class="desc" style="margin-bottom:8px">Splits the modelled generation and billed-energy totals across power-plant ownership types and consumer categories, following NEA's published generation-mix and consumer-category patterns. Adjust if you have more current figures — the underlying scenario numbers (generation, billed energy, losses, etc.) are unchanged.</p>
+    <div class="mix-group-label">Generation by Plant Type</div>
+    <div class="mix-grid" id="genMixControls"></div>
+    <div class="mix-group-label">Billed Energy by Consumer Type</div>
+    <div class="mix-grid" id="consMixControls"></div>
+    <div class="mix-total-note" id="mixTotalNote"></div>
+    <div class="variant-toolbar" style="margin-top:8px"><button onclick="resetMix()"><i class="fa-solid fa-rotate-left"></i> Reset Mix to Defaults</button></div>
+  </div>
+  <div class="panel">
+    <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
+    <p class="desc">How domestic sales, export sales and import purchases combine into net revenue at the selected year.</p>
+    <div class="chart-box"><canvas id="waterfallChart"></canvas></div>
   </div>
 
   <div class="grid">
@@ -360,7 +385,28 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
   </div>
 
   <div class="panel">
+    <h4><i class="fa-solid fa-stethoscope"></i> Target-Year Diagnosis &amp; Required Adjustments</h4>
+    <p class="desc">At the selected target year, checks the active variant against standard power-system planning thresholds — supply-adequacy reserve margin, transmission/grid headroom, and evacuation capacity — and where a gap exists, solves for the parameter value that would close it, holding everything else fixed. This turns a risk number into an actionable planning target rather than just a warning.</p>
+    <div id="targetDiagnosis"></div>
+  </div>
+
+  <div class="panel">
     <div class="footer-note" id="footnote"></div>
+  </div>
+
+  <div class="panel">
+    <h4><i class="fa-solid fa-circle-info"></i> Model Limitations</h4>
+    <p class="desc">Read before using these results for a real decision. This tool is a screening-level scenario model, not a production-grade capacity-expansion or unit-commitment study.</p>
+    <ol class="limitations-list">
+      <li><strong>No hourly/sub-annual dispatch.</strong> Generation, demand and trade are modelled as annual energy totals (GWh/MW), not an hourly or seasonal load-duration-curve dispatch. Monsoon-vs-dry-season hydro variation within a year, daily peak-shaving, and short-duration storage are not represented.</li>
+      <li><strong>No transmission network topology.</strong> "Grid capacity" and "evacuation capacity" are single aggregate MW limits, not a modelled network with individual line ratings, N-1 contingency, or losses that vary by corridor.</li>
+      <li><strong>Hydrology and demand-regime states are illustrative, not statistically calibrated.</strong> The Markov-chain shock magnitudes (±12%/±24% generation, ±3 pp/yr demand) and default persistence are reasoned assumptions, not fitted to Nepal's actual historical hydrology or business-cycle data. Treat probabilities as directional, not exact.</li>
+      <li><strong>Financial assumptions are simplified.</strong> A single flat domestic tariff, export price and import price apply across all consumer categories and the full horizon — no tariff escalation, no take-or-pay contract structures, no plant-level cost/depreciation/financing.</li>
+      <li><strong>No unit-level generation detail.</strong> Plant-by-plant availability, forced-outage rates, maintenance scheduling and commissioning-date risk for specific projects are not modelled — "capacity growth" is a single aggregate annual rate.</li>
+      <li><strong>Macro-economic uplift (GDP/EV/induction) is additive, not a full macro-econometric model.</strong> It captures a reasoned elasticity/incremental-load effect, not general-equilibrium feedback (e.g., higher tariffs suppressing demand, or generation investment affecting GDP).</li>
+      <li><strong>Export absorption is a single India-side assumption</strong> (a flat % of surplus), not a modelled cross-border market with its own price formation, seasonal demand, or third-country (Bangladesh) transactions.</li>
+      <li><strong>The goal-seek solver above holds every other parameter fixed</strong> when solving for a required value — it shows one feasible lever in isolation, not the jointly optimal combination of levers (which would require a formal optimization model, e.g. linear/mixed-integer programming).</li>
+    </ol>
   </div>
 </div>
 
@@ -379,6 +425,7 @@ const fmt = (n,d=0)=>Number(n||0).toLocaleString("en-US",{maximumFractionDigits:
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 
 let BASELINE = null;
+let DATA_DEFAULTS = {};
 let scenarios = [];
 let activeId = "base";
 let targetYear = 2030;
@@ -580,10 +627,21 @@ const controlDefs={
  macro:[["gdpGrowth","GDP growth rate","%/yr",0,15,.1],["gdpElasticity","GDP → demand elasticity","x",0.3,2,.05],["evAdoptionGrowth","EV charging load growth","%/yr",0,80,1],["inductionGrowth","Electric cooking (induction) penetration growth","pp/yr",0,25,.5]],
  custom:[["demandGrowth","Annual demand growth","%/yr",3,15,.5],["capacityGrowth","Generation growth","%/yr",2,20,.5],["hydrology","Hydrology shock","%",-25,15,1],["domesticTariff","Domestic tariff","NPR/kWh",7,14,.25],["exportPrice","Export price","NPR/kWh",3,10,.25],["importPrice","Import price","NPR/kWh",6,16,.25],["evacCapacity","Evacuation capacity","MW",300,5000,50],["evacUtil","Evacuation utilization","%",30,95,5],["indiaAbsorption","India export absorption","%",0,100,5],["substationCapacity","Grid capacity","MW",1500,9000,100],["systemLossPct","System (T&D) loss — current","%",3,30,.1],["lossImprovement","Annual loss reduction","pp/yr",-1,2,.05],["consumerGrowth","Consumer growth","%/yr",1,15,.25],["gdpGrowth","GDP growth rate","%/yr",0,15,.1],["gdpElasticity","GDP → demand elasticity","x",0.3,2,.05],["evAdoptionGrowth","EV charging load growth","%/yr",0,80,1],["inductionGrowth","Induction-cooking penetration growth","pp/yr",0,25,.5]]
 };
+function toggleParamLock(key,included){
+ const a=active();
+ if(!a.locked) a.locked={};
+ a.locked[key]=!included;
+ if(!included && DATA_DEFAULTS[key]!=null) a.params[key]=DATA_DEFAULTS[key];
+ renderAll();
+}
 function renderControls(hostId,defs){
  const host=document.getElementById(hostId);
  if(!host)return;
- host.innerHTML=defs.map(d=>`<div class="field"><label>${d[1]} <span id="v-${d[0]}">${fmt(active().params[d[0]],d[5]<1?1:0)} ${d[2]}</span></label><input type="range" min="${d[3]}" max="${d[4]}" step="${d[5]}" value="${active().params[d[0]]}" oninput="setParam('${d[0]}',this.value)"></div>`).join("");
+ const a=active(), locked=a.locked||{};
+ host.innerHTML=defs.map(d=>{
+   const isLocked=!!locked[d[0]];
+   return `<div class="field ${isLocked?"field-locked":""}"><label><span class="field-name"><input type="checkbox" class="field-toggle" ${isLocked?"":"checked"} onchange="toggleParamLock('${d[0]}',this.checked)" title="Include this driver in the analysis (uncheck to hold at baseline default)">${d[1]}</span><span id="v-${d[0]}">${fmt(a.params[d[0]],d[5]<1?1:0)} ${d[2]}</span></label><input type="range" min="${d[3]}" max="${d[4]}" step="${d[5]}" value="${a.params[d[0]]}" oninput="setParam('${d[0]}',this.value)" ${isLocked?"disabled":""}></div>`;
+ }).join("");
 }
 function renderMacroContext(){
  const host=document.getElementById("macroContext");
@@ -601,6 +659,85 @@ function renderMacroContext(){
  ].map(([label,val,unit])=>`<div class="kpi"><small>${label}</small><strong>${val}</strong><em>${unit}</em></div>`).join("");
  const note=document.getElementById("macroNote");
  if(note)note.textContent=`Source: ${m.source||"Economic Survey Report; NEA e-mobility & tourism reporting"}. Defaults: GDP ${fmt(m.gdpGrowthBaselinePct??9.1,1)}%/yr (5-yr avg), EV load +${fmt(m.evAdoptionDefaultGrowthPct??35,0)}%/yr, induction-cooking +${fmt(m.inductionDefaultGrowthPpPerYr??14,1)} pp/yr.`;
+}
+function renderTradeSnapshot(){
+ const host=document.getElementById("tradeSnapshot");
+ if(!host||!BASELINE)return;
+ const a=active(), r=scenarioAt(a,targetYear);
+ const maxExport=(a.params.evacCapacity*8760*(a.params.evacUtil/100))/1000;
+ const yearEl=document.getElementById("tradeSnapshotYear");
+ if(yearEl)yearEl.textContent=targetYear;
+ host.innerHTML=[
+  ["Surplus Available for Export",fmt(r.exportPotential),"GWh, before line/absorption limits"],
+  ["Max Evacuation Capacity",fmt(maxExport),"GWh/yr at current line utilization"],
+  ["Actual Export",fmt(r.actualExport),"GWh, after all limits"],
+  ["Curtailed (unused surplus)",fmt(r.curtailed),"GWh — raise evacuation/absorption to recover"],
+  ["Import Requirement",fmt(r.deficit),"GWh, if demand exceeds generation"],
+  ["Grid Headroom",fmt(a.params.substationCapacity-r.peakDemand),"MW vs. peak demand"]
+ ].map(([label,val,unit])=>`<div class="kpi"><small>${label}</small><strong>${val}</strong><em>${unit}</em></div>`).join("");
+}
+
+// ── Target-year goal-seek: given a supply/grid/export gap, find the
+// parameter value (holding everything else fixed) that closes it. ──────────
+function solveMonotonic(evalFn,target,lo,hi,iterations=40){
+ const fLo=evalFn(lo), fHi=evalFn(hi);
+ const increasing=fHi>=fLo;
+ const between=increasing?(target>=fLo&&target<=fHi):(target<=fLo&&target>=fHi);
+ if(!between){
+   const bestVal=increasing?(target>fHi?hi:lo):(target>fLo?lo:hi);
+   return {value:bestVal,reachable:false,achieved:evalFn(bestVal)};
+ }
+ let a=lo,b=hi;
+ for(let i=0;i<iterations;i++){
+   const mid=(a+b)/2, fm=evalFn(mid);
+   if(increasing?fm<target:fm>target) a=mid; else b=mid;
+ }
+ const value=(a+b)/2;
+ return {value,reachable:true,achieved:evalFn(value)};
+}
+function renderTargetDiagnosis(){
+ const host=document.getElementById("targetDiagnosis");
+ if(!host||!BASELINE)return;
+ const a=active(), y=targetYear, p=a.params, r=scenarioAt(a,y);
+ const reserveMarginPct=r.domesticEnergyDemand>0?(r.availableGeneration-r.domesticEnergyDemand)/r.domesticEnergyDemand*100:0;
+ const RESERVE_TARGET=15, GRID_MARGIN=10; // standard planning-margin assumptions — see Model Limitations
+ const items=[];
+
+ if(reserveMarginPct<RESERVE_TARGET){
+   const evalCap=v=>{const rr=scenarioAt({params:{...p,capacityGrowth:v}},y);return rr.domesticEnergyDemand>0?(rr.availableGeneration-rr.domesticEnergyDemand)/rr.domesticEnergyDemand*100:0;};
+   const evalDem=v=>{const rr=scenarioAt({params:{...p,demandGrowth:v}},y);return rr.domesticEnergyDemand>0?(rr.availableGeneration-rr.domesticEnergyDemand)/rr.domesticEnergyDemand*100:0;};
+   const solCap=solveMonotonic(evalCap,RESERVE_TARGET,0,25);
+   const solDem=solveMonotonic(evalDem,RESERVE_TARGET,0,20);
+   items.push({ok:false,
+     issue:`Supply adequacy: reserve margin at ${y} is ${fmt(reserveMarginPct,1)}%${r.deficit>0.01?` (a ${fmt(r.deficit)} GWh import requirement)`:""} — below the ${RESERVE_TARGET}% planning threshold.`,
+     options:[
+       solCap.reachable?`Raise generation growth: ${fmt(p.capacityGrowth,1)}%/yr → <strong>${fmt(solCap.value,2)}%/yr</strong>`:`Generation growth alone cannot reach a ${RESERVE_TARGET}% reserve margin within the modelled range (best case only reaches ${fmt(solCap.achieved,1)}%)`,
+       solDem.reachable?`Or curb demand growth: ${fmt(p.demandGrowth,1)}%/yr → <strong>${fmt(solDem.value,2)}%/yr</strong>`:`Demand-side action alone cannot close the gap within range (best case only reaches ${fmt(solDem.achieved,1)}%)`
+     ]});
+ }else{
+   items.push({ok:true,issue:`Supply adequacy: reserve margin at ${y} is ${fmt(reserveMarginPct,1)}% — meets the ${RESERVE_TARGET}% planning threshold.`,options:[]});
+ }
+
+ const requiredSubstation=r.peakDemand*(1+GRID_MARGIN/100);
+ if(p.substationCapacity<requiredSubstation){
+   items.push({ok:false,
+     issue:`Transmission/grid headroom: peak demand at ${y} is ${fmt(r.peakDemand)} MW against ${fmt(p.substationCapacity)} MW of grid/substation capacity — under the ${GRID_MARGIN}% planning margin.`,
+     options:[`Raise domestic grid/substation capacity: ${fmt(p.substationCapacity)} MW → <strong>${fmt(requiredSubstation,0)} MW</strong>`]});
+ }else{
+   items.push({ok:true,issue:`Transmission/grid headroom: ${fmt(p.substationCapacity-r.peakDemand)} MW of margin above peak demand at ${y} — adequate.`,options:[]});
+ }
+
+ if(r.curtailed>0.5){
+   const evalEvac=v=>scenarioAt({params:{...p,evacCapacity:v}},y).curtailed;
+   const solEvac=solveMonotonic(evalEvac,0,p.evacCapacity,5000);
+   items.push({ok:false,
+     issue:`Export evacuation: ${fmt(r.curtailed)} GWh of surplus is being curtailed at ${y} (unmonetized).`,
+     options:[solEvac.reachable?`Raise evacuation capacity: ${fmt(p.evacCapacity)} MW → <strong>${fmt(solEvac.value,0)} MW</strong> to fully absorb the surplus`:`Even at 5,000 MW evacuation capacity, ${fmt(solEvac.achieved)} GWh would still be curtailed — the binding constraint is export-absorption (offtake), not the line itself`]});
+ }else{
+   items.push({ok:true,issue:`Export evacuation: no material curtailment at ${y}.`,options:[]});
+ }
+
+ host.innerHTML=items.map(it=>`<div class="diagnosis-item ${it.ok?"ok":""}"><div class="issue"><i class="fa-solid ${it.ok?"fa-circle-check":"fa-triangle-exclamation"}"></i> ${it.issue}</div>${it.options.length?`<ul>${it.options.map(o=>`<li>${o}</li>`).join("")}</ul>`:""}</div>`).join("");
 }
 function renderHydro(){
  const a=active(), start=+BASELINE.latestYear||2025;
@@ -1490,7 +1627,7 @@ function renderSummary(){
 }
 function renderAll(){
  clearError();
- renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("lossControls",controlDefs.loss);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("customControls",controlDefs.custom);renderControls("macroControls",controlDefs.macro);renderMacroContext();
+ renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("lossControls",controlDefs.loss);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("customControls",controlDefs.custom);renderControls("macroControls",controlDefs.macro);renderMacroContext();renderTradeSnapshot();renderTargetDiagnosis();
  renderHydro();renderHorizon();renderYearScrubber();renderSummary();renderKpis();renderAdequacy();renderCharts();renderComparison();
  renderRecommendation();renderTornado();renderWeightControls();renderExpectedValue();
  renderMixControls();renderSankey();renderWaterfall();renderRadar();renderStackedArea();
@@ -1514,6 +1651,7 @@ async function boot(){
    showError("Live scenario baseline could not be loaded. The tool is running in safe fallback mode. Server/API error: "+escapeHtml(e.message));
  }
  const start=+BASELINE.latestYear||2025;
+ DATA_DEFAULTS=buildDefaults(BASELINE);
  targetYear=start+5;
  document.getElementById("status").innerHTML=`<span class="badge good">Scenario Engine Ready</span><span class="badge">Baseline FY ${start}</span><span class="badge">Target ${targetYear}</span><span class="badge">Variants ${scenarios.length||5}</span>`;
  document.getElementById("footnote").textContent=`Baseline data: FY ${start}. The model uses the dashboard's scenario-baseline endpoint where available and falls back to safe defaults if the API is unavailable. Results are screening estimates, not a substitute for detailed production-cost, hydro-energy, transmission or financial models.`;
