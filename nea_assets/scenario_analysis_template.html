@@ -1402,6 +1402,13 @@ function renderMcResults(){
    <div class="section-label" style="margin-top:14px">Multi-Variable Risk Board</div>
    <div style="overflow-x:auto"><table class="risk-board"><thead><tr><th>Variable</th><th>Base Case</th><th>P10</th><th>P50 (Median)</th><th>P90</th><th>Unit</th></tr></thead><tbody>${rows}</tbody></table></div>
    <p class="desc" style="margin-top:2px">${caption}</p>
+   <div class="variant-toolbar" style="margin-top:12px;align-items:center">
+     <label style="display:flex;align-items:center;gap:8px;font-size:13px">Chart variable
+       <select id="mcVariableSelect" onchange="mcSelectedVar=this.value;renderMcVariableChart()">
+         ${MC_VARIABLES.map(v=>`<option value="${v.key}" ${v.key===mcSelectedVar?"selected":""}>${v.label[isMarkov?"markov":"snapshot"]}</option>`).join("")}
+       </select>
+     </label>
+   </div>
    <div class="chart-box" style="margin-top:10px"><canvas id="mcHistogram"></canvas></div>
    <p class="desc" id="mcChartCaption" style="margin-top:8px"></p>`;
  renderMcVariableChart();
@@ -1413,6 +1420,8 @@ function renderMcVariableChart(){
  const isMarkov=lastMcRun.mode==="markov";
  const s=mcVarStats(varDef);
  document.querySelectorAll(".risk-board tbody tr").forEach(tr=>tr.classList.toggle("mc-row-selected",tr.dataset.var===varDef.key));
+ const sel=document.getElementById("mcVariableSelect");
+ if(sel && sel.value!==varDef.key) sel.value=varDef.key;
  const canvas=document.getElementById("mcHistogram");
  if(!canvas)return;
  const bins=24, min=s.arr[0], max=s.arr.at(-1), width=(max-min)/bins||1;
