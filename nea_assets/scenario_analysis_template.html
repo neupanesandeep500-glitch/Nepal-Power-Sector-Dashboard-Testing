@@ -40,7 +40,9 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .mc-layout,.side-layout{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin-top:10px}
-.mc-sidebar,.side-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px}
+.mc-sidebar,.side-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px;max-height:calc(100vh - 30px);overflow-y:auto;padding-right:4px;scrollbar-width:thin}
+.mc-sidebar::-webkit-scrollbar,.side-sidebar::-webkit-scrollbar{width:6px}
+.mc-sidebar::-webkit-scrollbar-thumb,.side-sidebar::-webkit-scrollbar-thumb{background:#c7d3e6;border-radius:3px}
 .mc-side-block,.side-block{background:rgba(255,255,255,.03);border:1px solid var(--border,#3a4658);border-radius:10px;padding:12px}
 .mc-method-toggle{display:flex;flex-direction:column;gap:8px}
 .mc-method-opt{display:flex;align-items:flex-start;gap:8px;padding:8px;border:1px solid var(--border,#3a4658);border-radius:8px;cursor:pointer;font-size:12.5px}
@@ -591,10 +593,23 @@ function renderStages(){
  const nav=document.getElementById("stageNav");
  nav.innerHTML=stages.map((x,i)=>`<div class="stage ${i===0?"active":""}" data-stage="${i}" onclick="goStage(${i})"><i class="fa-solid ${x[2]}"></i>${i+1}. ${x[1]}</div>`).join("");
 }
+function syncSidebarHeights(){
+ document.querySelectorAll(".side-layout, .mc-layout").forEach(layout=>{
+   const sidebar=layout.querySelector(".side-sidebar, .mc-sidebar");
+   const content=layout.querySelector(".side-content, .mc-results");
+   if(!sidebar||!content)return;
+   // Only measure when the panel is actually visible (hidden stage-panels report 0
+   // height); skip silently otherwise — the next goStage()/renderAll() on that
+   // panel will re-sync once it's visible.
+   const h=content.offsetHeight;
+   if(h>0) sidebar.style.maxHeight=Math.max(280,h)+"px";
+ });
+}
 function goStage(i){
  document.querySelectorAll(".stage-panel").forEach((e,n)=>e.classList.toggle("active",n===i));
  document.querySelectorAll(".stage").forEach((e,n)=>e.classList.toggle("active",n===i));
  if(i===5)renderComparison();
+ requestAnimationFrame(syncSidebarHeights);
 }
 
 function renderVariants(){
@@ -1390,6 +1405,7 @@ function renderMcResults(){
    <div class="chart-box" style="margin-top:10px"><canvas id="mcHistogram"></canvas></div>
    <p class="desc" id="mcChartCaption" style="margin-top:8px"></p>`;
  renderMcVariableChart();
+ requestAnimationFrame(syncSidebarHeights);
 }
 function renderMcVariableChart(){
  if(!lastMcRun)return;
@@ -1632,6 +1648,7 @@ function renderAll(){
  renderRecommendation();renderTornado();renderWeightControls();renderExpectedValue();
  renderMixControls();renderSankey();renderWaterfall();renderRadar();renderStackedArea();
  persistSession();
+ requestAnimationFrame(syncSidebarHeights);
 }
 function resetScenarios(){
  if(!confirm("Reset all scenario variants to defaults? This clears the autosaved session on this device (saved snapshots are kept)."))return;
