@@ -19,7 +19,7 @@ h3{font-size:16px} h4{font-size:13px;color:#37425a}
 .status{font-size:11px;color:#7787a0;margin:0 0 12px}
 .badge{display:inline-block;padding:3px 8px;border-radius:20px;background:#eef3fb;color:#0d47a1;font-size:10px;font-weight:800;margin-right:4px}
 .good{background:#e7f5ea;color:#176b25}.warn{background:#fff4d6;color:#8a5a00}.bad{background:#fdecea;color:#a72820}
-.stage-nav{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:15px}
+.stage-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:15px}
 .stage{border:1px solid #d7e2f5;background:linear-gradient(180deg,#ffffff,#f3f6fb);border-radius:10px;padding:11px 8px;cursor:pointer;text-align:center;font-size:11px;font-weight:800;color:#55627a;box-shadow:0 1px 2px rgba(20,30,60,.05);transition:all .15s ease;position:relative}
 .stage:hover{background:linear-gradient(180deg,#ffffff,#eaf1fc);border-color:#a9c3ec;color:#0d47a1;transform:translateY(-1px);box-shadow:0 3px 8px rgba(20,30,60,.09)}
 .stage.active{background:linear-gradient(180deg,#1a5cc4,#0d47a1);color:#fff;border-color:#0d47a1;box-shadow:0 3px 10px rgba(13,71,161,.35);transform:translateY(-1px)}
@@ -40,6 +40,18 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .mc-layout,.side-layout{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin-top:10px}
+.app-shell{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start;margin-bottom:15px}
+.tree-sidebar{display:flex;flex-direction:column;gap:12px;position:sticky;top:10px;max-height:calc(100vh - 30px);overflow-y:auto;padding-right:4px;scrollbar-width:thin}
+.tree-sidebar::-webkit-scrollbar{width:6px}
+.tree-sidebar::-webkit-scrollbar-thumb{background:#c7d3e6;border-radius:3px}
+.tree-section{border:1px solid #e3e9f2;border-radius:10px;background:#fff;overflow:hidden}
+.tree-section summary{cursor:pointer;padding:10px 12px;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:#0d47a1;list-style:none;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#f7f9fc,#eef2f8)}
+.tree-section summary::-webkit-details-marker{display:none}
+.tree-section summary::after{content:"▸";transition:transform .15s;font-size:10px;opacity:.7}
+.tree-section[open] summary::after{transform:rotate(90deg)}
+.tree-section .tree-body{padding:12px}
+.app-main{min-width:0}
+.tree-top-block{background:#fff;border:1px solid #e3e9f2;border-radius:10px;padding:12px}
 .mc-sidebar,.side-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px;max-height:calc(100vh - 30px);overflow-y:auto;padding-right:4px;scrollbar-width:thin}
 .mc-sidebar::-webkit-scrollbar,.side-sidebar::-webkit-scrollbar{width:6px}
 .mc-sidebar::-webkit-scrollbar-thumb,.side-sidebar::-webkit-scrollbar-thumb{background:#c7d3e6;border-radius:3px}
@@ -55,7 +67,7 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .risk-board thead th{font-weight:700;opacity:.75;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
 .risk-board tbody tr:hover{background:rgba(255,255,255,.04);cursor:pointer}
 .risk-board tr.mc-row-selected{background:rgba(120,170,255,.12)}
-@media (max-width:820px){.mc-layout,.side-layout{grid-template-columns:1fr}.mc-sidebar,.side-sidebar{position:static}}
+@media (max-width:820px){.mc-layout,.side-layout,.app-shell{grid-template-columns:1fr}.mc-sidebar,.side-sidebar,.tree-sidebar{position:static;max-height:none}}
 @media(max-width:900px){.grid,.grid3{grid-template-columns:1fr}.stage-nav{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:560px){.stage-nav{grid-template-columns:repeat(2,1fr)}}
 .field{margin-bottom:11px}.field label{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:#37425a;margin-bottom:4px}
@@ -147,148 +159,187 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
   </div>
 
-  <div id="stage1" class="stage-panel active">
-    <div class="panel">
-      <h4><i class="fa-solid fa-layer-group"></i> Stage 1 — Scenario Library</h4>
-      <p class="desc">Start with a planning case or create several variants for side-by-side comparison.</p>
-      <div class="variant-toolbar">
-        <button class="primary" onclick="addScenario()"><i class="fa-solid fa-plus"></i> Add Custom Variant</button>
-        <button onclick="duplicateActive()"><i class="fa-solid fa-copy"></i> Duplicate Active</button>
-        <button onclick="saveSnapshot()"><i class="fa-solid fa-floppy-disk"></i> Save Snapshot</button>
-        <button onclick="loadSnapshotPrompt()"><i class="fa-solid fa-folder-open"></i> Load Snapshot</button>
-        <button onclick="resetScenarios()"><i class="fa-solid fa-rotate-left"></i> Reset Library</button>
-        <span id="autosaveNote" class="footer-note" style="margin-left:auto"></span>
+  <div class="app-shell">
+    <div class="tree-sidebar">
+      <div class="tree-top-block">
+        <div class="section-label" style="margin-top:0">Scenario Variants</div>
+        <div class="variant-list" id="variantList"></div>
+        <div class="variant-toolbar" style="margin-top:8px">
+          <button class="primary" onclick="addScenario()"><i class="fa-solid fa-plus"></i> Add</button>
+          <button onclick="duplicateActive()"><i class="fa-solid fa-copy"></i> Duplicate</button>
+          <button onclick="saveSnapshot()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+          <button onclick="loadSnapshotPrompt()"><i class="fa-solid fa-folder-open"></i> Load</button>
+          <button onclick="resetScenarios()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        </div>
+        <span id="autosaveNote" class="footer-note"></span>
       </div>
-      <div class="variant-list" id="variantList"></div>
-    </div>
-  </div>
-
-  <div id="stage2" class="stage-panel">
-    <div class="panel">
-      <h4><i class="fa-solid fa-chart-line"></i> Stage 2 — Demand, Generation &amp; Macro Drivers</h4>
-      <p class="desc">Adjust filters on the left — applied annually across the horizon unless a staged year is selected later. Macro-economic context and calibrated defaults are shown on the right; leaving a macro slider untouched reproduces the historical trend already embedded in demand/generation, so nothing is double-counted.</p>
-      <div class="side-layout">
-        <div class="side-sidebar">
-          <div class="side-block">
-            <div class="section-label">Demand</div>
-            <div id="demandControls"></div>
-          </div>
-          <div class="side-block">
-            <div class="section-label">Generation</div>
-            <div id="generationControls"></div>
-          </div>
-          <div class="side-block">
-            <div class="section-label">Consumers &amp; System Losses</div>
-            <div id="lossControls"></div>
-          </div>
-          <div class="side-block">
-            <div class="section-label">Macroeconomic Drivers</div>
-            <div id="macroControls"></div>
-          </div>
-        </div>
-        <div class="side-content">
-          <div class="section-label">Macro-Economic Context</div>
-          <div class="kpis" id="macroContext"></div>
-          <div class="footer-note" id="macroNote"></div>
-        </div>
+      <div class="tree-top-block">
+        <div class="section-label" style="margin-top:0">Planning Horizon</div>
+        <div class="horizon" id="horizon"></div>
       </div>
-    </div>
-  </div>
-
-  <div id="stage3" class="stage-panel">
-    <div class="panel">
-      <h4><i class="fa-solid fa-cloud-sun"></i> Stage 3 — Hydrology &amp; Supply Security</h4>
-      <p class="desc">Select a normal, wet, dry or severe-dry planning condition. For multi-year planning, a shock can be assigned to a specific year rather than permanently reducing all years.</p>
-      <div class="side-layout">
-        <div class="side-sidebar">
-          <div class="side-block">
-            <div class="section-label">Hydrology Shock</div>
-            <div id="hydroControls"></div>
-            <div class="field"><label>Shock year <span id="hydroYearLabel"></span></label><select id="hydroYear"></select></div>
-            <div class="field"><label>Duration <span>years</span></label><input id="hydroDuration" type="number" min="1" max="5" step="1"></div>
-          </div>
+      <details class="tree-section" open>
+        <summary>Demand &amp; Generation</summary>
+        <div class="tree-body">
+          <div class="section-label" style="margin-top:0">Demand</div>
+          <div id="demandControls"></div>
+          <div class="section-label">Generation</div>
+          <div id="generationControls"></div>
         </div>
-        <div class="side-content">
-          <div class="section-label">Quick Presets</div>
-          <div class="preset-grid">
-            <div class="preset" onclick="setHydro('normal')"><strong>Normal Year</strong><small>0% generation shock</small></div>
-            <div class="preset" onclick="setHydro('wet')"><strong>Wet Year</strong><small>+8% generation</small></div>
-            <div class="preset" onclick="setHydro('dry')"><strong>Dry Year</strong><small>-12% generation</small></div>
-            <div class="preset" onclick="setHydro('severe')"><strong>Severe Dry</strong><small>-20% generation</small></div>
-          </div>
+      </details>
+      <details class="tree-section">
+        <summary>Macroeconomic Drivers</summary>
+        <div class="tree-body">
+          <div class="kpis" id="macroContext" style="margin-bottom:10px"></div>
+          <div id="macroControls"></div>
+          <div class="footer-note" id="macroNote" style="margin-top:8px"></div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="stage4" class="stage-panel">
-    <div class="panel">
-      <h4><i class="fa-solid fa-right-left"></i> Stage 4 — Cross-Border Trade &amp; Grid</h4>
-      <p class="desc">Test export absorption, evacuation limits, line utilization and domestic grid/substation capacity.</p>
-      <div class="side-layout">
-        <div class="side-sidebar">
-          <div class="side-block">
-            <div class="section-label">Trade</div>
-            <div id="tradeControls"></div>
+      </details>
+      <details class="tree-section">
+        <summary>Hydrology &amp; Supply Security</summary>
+        <div class="tree-body">
+          <div class="preset-grid" style="margin-bottom:10px">
+            <div class="preset" onclick="setHydro('normal')"><strong>Normal</strong><small>0% shock</small></div>
+            <div class="preset" onclick="setHydro('wet')"><strong>Wet</strong><small>+8%</small></div>
+            <div class="preset" onclick="setHydro('dry')"><strong>Dry</strong><small>-12%</small></div>
+            <div class="preset" onclick="setHydro('severe')"><strong>Severe Dry</strong><small>-20%</small></div>
           </div>
-          <div class="side-block">
-            <div class="section-label">Grid</div>
-            <div id="gridControls"></div>
-          </div>
+          <div id="hydroControls"></div>
+          <div class="field"><label>Shock year <span id="hydroYearLabel"></span></label><select id="hydroYear"></select></div>
+          <div class="field"><label>Duration <span>years</span></label><input id="hydroDuration" type="number" min="1" max="5" step="1"></div>
         </div>
-        <div class="side-content">
-          <div class="section-label">Live Trade &amp; Grid Snapshot — <span id="tradeSnapshotYear"></span></div>
+      </details>
+      <details class="tree-section">
+        <summary>Trade &amp; Grid</summary>
+        <div class="tree-body">
+          <div class="section-label" style="margin-top:0">Trade</div>
+          <div id="tradeControls"></div>
+          <div class="section-label">Grid</div>
+          <div id="gridControls"></div>
+          <div class="section-label">Live Snapshot — <span id="tradeSnapshotYear"></span></div>
           <div class="kpis" id="tradeSnapshot"></div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="stage5" class="stage-panel">
-    <div class="panel">
-      <h4><i class="fa-solid fa-sliders"></i> Stage 5 — Custom Variant &amp; Planning Horizon</h4>
-      <p class="desc">Fine-tune the active variant. Use the horizon buttons to compare 5, 10, 15 or 20 years.</p>
-      <div class="horizon" id="horizon"></div>
-      <div class="side-layout" style="margin-top:14px">
-        <div class="side-sidebar" id="customControls"></div>
-        <div class="side-content">
-          <div class="section-label">Active variant summary</div>
-          <div id="activeSummary"></div>
+      </details>
+      <details class="tree-section">
+        <summary>Consumers &amp; System Losses</summary>
+        <div class="tree-body">
+          <div id="lossControls"></div>
         </div>
-      </div>
+      </details>
+      <details class="tree-section">
+        <summary>Active Variant Summary</summary>
+        <div class="tree-body" id="activeSummary"></div>
+      </details>
     </div>
-  </div>
+
+    <div class="app-main">
+      <div class="panel">
+        <div class="stage-nav" id="stageNav"></div>
+      </div>
 
   <div id="stage6" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-table-columns"></i> Stage 6 — Compare & Decide</h4>
-      <p class="desc">Compare all enabled variants at the selected target year and identify the strongest constraints.</p>
-      <div class="variant-toolbar">
-        <button onclick="exportComparisonCsv()"><i class="fa-solid fa-file-csv"></i> Export Comparison (CSV)</button>
+      <h4><i class="fa-solid fa-chart-area"></i> Stage 6 — Overview &amp; Visualization</h4>
+      <p class="desc">Full system picture for the active variant at the selected year: trajectory, adequacy, revenue, energy flow and multi-criteria comparison.</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid">
+      <div class="panel">
+        <h4><i class="fa-solid fa-chart-area"></i> Multi-Scenario System Trajectory</h4>
+        <p class="desc" id="trajectoryDesc"></p>
+        <div class="chart-box tall"><canvas id="trajectoryChart"></canvas></div>
       </div>
-      <div class="table-wrap"><div id="comparisonTable"></div></div>
+      <div class="panel">
+        <h4><i class="fa-solid fa-scale-balanced"></i> System Adequacy</h4>
+        <div id="adequacy" class="adequacy"></div>
+        <div style="margin-top:15px"><div class="section-label">Energy balance</div><div id="flow" class="flow"></div></div>
+        <div id="flowLegend" class="footer-note" style="margin-top:7px"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h4><i class="fa-solid fa-coins"></i> Revenue &amp; Import Cost</h4>
+        <div class="chart-box"><canvas id="revenueChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h4><i class="fa-solid fa-triangle-exclamation"></i> Constraint Heatmap — Target Year</h4>
+        <div class="table-wrap"><div id="riskTable"></div></div>
+      </div>
     </div>
     <div class="panel">
-      <h4><i class="fa-solid fa-lightbulb"></i> Decision Recommendation</h4>
-      <p class="desc">A composite score combines net revenue and constraint risk across all <em>enabled</em> variants at the target year to suggest the strongest candidate. Use it as a starting point, not a final answer.</p>
-      <div id="recommendation"></div>
+      <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
+      <p class="desc" id="sankeyDesc"></p>
+      <div class="chart-box sankey-tall"><canvas id="sankeyChart"></canvas></div>
+      <div id="sankeyLegend" class="legend-note"></div>
+      <div class="section-label" style="margin-top:14px">Plant Mix &amp; Consumer Mix (Illustrative Split)</div>
+      <p class="desc" style="margin-bottom:8px">Splits generation and billed energy across plant-ownership and consumer categories, following NEA's published mix patterns. Adjust below if you have more current figures.</p>
+      <div class="mix-group-label">Generation by Plant Type</div>
+      <div class="mix-grid" id="genMixControls"></div>
+      <div class="mix-group-label">Billed Energy by Consumer Type</div>
+      <div class="mix-grid" id="consMixControls"></div>
+      <div class="mix-total-note" id="mixTotalNote"></div>
+      <div class="variant-toolbar" style="margin-top:8px"><button onclick="resetMix()"><i class="fa-solid fa-rotate-left"></i> Reset Mix to Defaults</button></div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
+      <div class="chart-box"><canvas id="waterfallChart"></canvas></div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h4><i class="fa-solid fa-bullseye"></i> Multi-Criteria Scenario Comparison</h4>
+        <p class="desc">Enabled variants scored 0–100 on five decision criteria at the selected year.</p>
+        <div class="chart-box tall"><canvas id="radarChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h4><i class="fa-solid fa-layer-group"></i> Energy Balance Composition — Active Variant</h4>
+        <p class="desc" id="stackedAreaDesc"></p>
+        <div class="view-toggle" id="stackedAreaToggle"></div>
+        <div class="chart-box tall"><canvas id="stackedAreaChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-stethoscope"></i> Target-Year Diagnosis &amp; Required Adjustments</h4>
+      <p class="desc">Checks the active variant against standard adequacy, grid-headroom and evacuation thresholds at the target year and solves for the value that closes any gap, holding everything else fixed.</p>
+      <div id="targetDiagnosis"></div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-snowflake"></i> Seasonal (Wet/Dry) Adequacy Check</h4>
+      <p class="desc">Nepal's water-year seasons: <strong>Dry season</strong> Mangsir 16 – Jestha 15 (~mid-Dec to ~end-May), <strong>Wet season</strong> Jestha 16 – Mangsir 15 (~early-Jun to ~mid-Dec). The annual reserve margin above can look adequate while hiding a real dry-season shortfall, since hydro output is structurally far lower in the dry season while demand doesn't fall nearly as much. Shares below are reasoned defaults, not fitted to real monthly/hourly data (see Model Limitations).</p>
+      <div class="side-layout">
+        <div class="side-sidebar">
+          <div class="side-block">
+            <div class="section-label">Seasonal Shares (of annual total)</div>
+            <div class="field"><label>Wet-season generation share <span id="v-wetGenShare">68</span>%</label><input type="range" id="wetGenShare" min="45" max="85" step="1" value="68" oninput="document.getElementById('v-wetGenShare').textContent=this.value;renderSeasonalAdequacy()"></div>
+            <div class="field"><label>Wet-season demand share <span id="v-wetDemandShare">49</span>%</label><input type="range" id="wetDemandShare" min="40" max="60" step="1" value="49" oninput="document.getElementById('v-wetDemandShare').textContent=this.value;renderSeasonalAdequacy()"></div>
+          </div>
+        </div>
+        <div class="side-content">
+          <div class="kpis" id="seasonalAdequacy"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage7" class="stage-panel">
+    <div class="panel">
+      <h4><i class="fa-solid fa-shuffle"></i> Stage 7 — Risk &amp; Uncertainty (Monte Carlo / Markov Chain)</h4>
+      <p class="desc">Three complementary uncertainty-quantification tools: one-at-a-time sensitivity, probability-weighted scenario planning, and full stochastic simulation via Monte Carlo or Markov-chain methods — standard practice in modern capacity-expansion and energy-transition risk analysis.</p>
     </div>
     <div class="grid">
       <div class="panel">
         <h4><i class="fa-solid fa-scale-unbalanced"></i> Sensitivity — What Moves Net Revenue?</h4>
-        <p class="desc">Each driver in the active variant is nudged up/down independently and the resulting swing in target-year net revenue is measured, holding everything else fixed.</p>
+        <p class="desc">Each driver in the active variant is nudged up/down independently to measure its swing in target-year net revenue, holding everything else fixed.</p>
         <div class="chart-box"><canvas id="tornadoChart"></canvas></div>
       </div>
       <div class="panel">
         <h4><i class="fa-solid fa-dice"></i> Planning-Under-Uncertainty</h4>
-        <p class="desc">Assign each enabled variant a likelihood (weights need not sum to 100 — they're normalized automatically) to get a probability-weighted expected outcome across the scenario set.</p>
+        <p class="desc">Assign each enabled variant a likelihood (auto-normalized) to get a probability-weighted expected outcome across the scenario set.</p>
         <div id="weightControls"></div>
         <div class="kpis" id="expectedKpis" style="grid-template-columns:repeat(2,1fr);margin-top:10px"></div>
       </div>
     </div>
     <div class="panel" id="monteCarloPanel">
       <h4><i class="fa-solid fa-shuffle"></i> Stochastic Risk Simulation</h4>
-      <p class="desc">Turns single point estimates into probability distributions across every major system variable — generation, demand, exports, reserve margin, surplus/deficit and financial return — the standard risk-quantification practice in modern capacity-expansion and energy-transition planning. Choose the method on the left: a fast independent-draw snapshot, or a full-horizon Markov-chain path where hydrology (source-side) and demand growth (load-side) persist as serially-correlated regimes year over year, so droughts and slowdowns can cluster realistically instead of being re-randomized every year.</p>
+      <p class="desc">Turns single point estimates into probability distributions across every major system variable — generation, demand, exports, reserve margin, surplus/deficit and financial return. Choose the method on the left: a fast independent-draw snapshot, or a full-horizon Markov-chain path where hydrology (source-side) and demand growth (load-side) persist as serially-correlated regimes year over year, so droughts and slowdowns cluster realistically instead of being re-randomized every year.</p>
       <div class="mc-layout">
         <div class="mc-sidebar">
           <div class="mc-side-block">
@@ -324,73 +375,26 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
   </div>
 
+  <div id="stage8" class="stage-panel">
+    <div class="panel">
+      <h4><i class="fa-solid fa-table-columns"></i> Stage 8 — Compare &amp; Decide</h4>
+      <p class="desc">Compare all enabled variants at the selected target year and identify the strongest candidate.</p>
+      <div class="variant-toolbar">
+        <button onclick="exportComparisonCsv()"><i class="fa-solid fa-file-csv"></i> Export Comparison (CSV)</button>
+      </div>
+      <div class="table-wrap"><div id="comparisonTable"></div></div>
+    </div>
+    <div class="panel">
+      <h4><i class="fa-solid fa-lightbulb"></i> Decision Recommendation</h4>
+      <p class="desc">A composite score combines net revenue and constraint risk across all <em>enabled</em> variants at the target year. Use it as a starting point, not a final answer.</p>
+      <div id="recommendation"></div>
+    </div>
+  </div>
+
+    </div>
+  </div>
+
   <div id="statusBanner"></div>
-  <div class="kpis" id="kpis"></div>
-
-  <div class="grid">
-    <div class="panel">
-      <h4><i class="fa-solid fa-chart-area"></i> Multi-Scenario System Trajectory</h4>
-      <p class="desc" id="trajectoryDesc"></p>
-      <div class="chart-box tall"><canvas id="trajectoryChart"></canvas></div>
-    </div>
-    <div class="panel">
-      <h4><i class="fa-solid fa-scale-balanced"></i> System Adequacy</h4>
-      <div id="adequacy" class="adequacy"></div>
-      <div style="margin-top:15px"><div class="section-label">Energy balance</div><div id="flow" class="flow"></div></div>
-      <div id="flowLegend" class="footer-note" style="margin-top:7px"></div>
-    </div>
-  </div>
-
-  <div class="grid">
-    <div class="panel">
-      <h4><i class="fa-solid fa-coins"></i> Revenue & Import Cost</h4>
-      <div class="chart-box"><canvas id="revenueChart"></canvas></div>
-    </div>
-    <div class="panel">
-      <h4><i class="fa-solid fa-triangle-exclamation"></i> Constraint Heatmap — Target Year</h4>
-      <div class="table-wrap"><div id="riskTable"></div></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h4><i class="fa-solid fa-water"></i> Energy Flow — Sankey (Active Variant, Selected Year)</h4>
-    <p class="desc" id="sankeyDesc"></p>
-    <div class="chart-box sankey-tall"><canvas id="sankeyChart"></canvas></div>
-    <div id="sankeyLegend" class="legend-note"></div>
-    <div class="section-label" style="margin-top:14px">Plant Mix &amp; Consumer Mix (Illustrative Split)</div>
-    <p class="desc" style="margin-bottom:8px">Splits the modelled generation and billed-energy totals across power-plant ownership types and consumer categories, following NEA's published generation-mix and consumer-category patterns. Adjust if you have more current figures — the underlying scenario numbers (generation, billed energy, losses, etc.) are unchanged.</p>
-    <div class="mix-group-label">Generation by Plant Type</div>
-    <div class="mix-grid" id="genMixControls"></div>
-    <div class="mix-group-label">Billed Energy by Consumer Type</div>
-    <div class="mix-grid" id="consMixControls"></div>
-    <div class="mix-total-note" id="mixTotalNote"></div>
-    <div class="variant-toolbar" style="margin-top:8px"><button onclick="resetMix()"><i class="fa-solid fa-rotate-left"></i> Reset Mix to Defaults</button></div>
-  </div>
-  <div class="panel">
-    <h4><i class="fa-solid fa-money-bill-transfer"></i> Revenue Bridge — Active Variant</h4>
-    <p class="desc">How domestic sales, export sales and import purchases combine into net revenue at the selected year.</p>
-    <div class="chart-box"><canvas id="waterfallChart"></canvas></div>
-  </div>
-
-  <div class="grid">
-    <div class="panel">
-      <h4><i class="fa-solid fa-bullseye"></i> Multi-Criteria Scenario Comparison</h4>
-      <p class="desc">Enabled variants scored 0–100 on five decision criteria at the selected year (outer edge is better on every axis).</p>
-      <div class="chart-box tall"><canvas id="radarChart"></canvas></div>
-    </div>
-    <div class="panel">
-      <h4><i class="fa-solid fa-layer-group"></i> Energy Balance Composition — Active Variant</h4>
-      <p class="desc" id="stackedAreaDesc">How billed energy, T&amp;D losses, export, curtailment and import split the available generation.</p>
-      <div class="view-toggle" id="stackedAreaToggle"></div>
-      <div class="chart-box tall"><canvas id="stackedAreaChart"></canvas></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h4><i class="fa-solid fa-stethoscope"></i> Target-Year Diagnosis &amp; Required Adjustments</h4>
-    <p class="desc">At the selected target year, checks the active variant against standard power-system planning thresholds — supply-adequacy reserve margin, transmission/grid headroom, and evacuation capacity — and where a gap exists, solves for the parameter value that would close it, holding everything else fixed. This turns a risk number into an actionable planning target rather than just a warning.</p>
-    <div id="targetDiagnosis"></div>
-  </div>
 
   <div class="panel">
     <div class="footer-note" id="footnote"></div>
@@ -400,7 +404,7 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     <h4><i class="fa-solid fa-circle-info"></i> Model Limitations</h4>
     <p class="desc">Read before using these results for a real decision. This tool is a screening-level scenario model, not a production-grade capacity-expansion or unit-commitment study.</p>
     <ol class="limitations-list">
-      <li><strong>No hourly/sub-annual dispatch.</strong> Generation, demand and trade are modelled as annual energy totals (GWh/MW), not an hourly or seasonal load-duration-curve dispatch. Monsoon-vs-dry-season hydro variation within a year, daily peak-shaving, and short-duration storage are not represented.</li>
+      <li><strong>No hourly/sub-annual dispatch.</strong> Generation, demand and trade are modelled as annual energy totals (GWh/MW). A <em>Seasonal (Wet/Dry) Adequacy Check</em> (Overview tab) splits the same annual totals into wet/dry-season shares to surface dry-season shortfall risk — but the shares are reasoned defaults, not fitted to real monthly/hourly generation data, and there is still no true hourly load-duration-curve dispatch, daily peak-shaving, or short-duration storage modelling.</li>
       <li><strong>No transmission network topology.</strong> "Grid capacity" and "evacuation capacity" are single aggregate MW limits, not a modelled network with individual line ratings, N-1 contingency, or losses that vary by corridor.</li>
       <li><strong>Hydrology and demand-regime states are illustrative, not statistically calibrated.</strong> The Markov-chain shock magnitudes (±12%/±24% generation, ±3 pp/yr demand) and default persistence are reasoned assumptions, not fitted to Nepal's actual historical hydrology or business-cycle data. Treat probabilities as directional, not exact.</li>
       <li><strong>Financial assumptions are simplified.</strong> A single flat domestic tariff, export price and import price apply across all consumer categories and the full horizon — no tariff escalation, no take-or-pay contract structures, no plant-level cost/depreciation/financing.</li>
@@ -450,11 +454,8 @@ const STATUS_META={
 const STORAGE_KEY="npsd_scenario_analysis_v1";
 const SNAPSHOT_KEY="npsd_scenario_snapshots_v1";
 let stages=[
-  ["library","Scenario Library","fa-layer-group"],
-  ["demand","Demand & Generation","fa-chart-line"],
-  ["hydro","Hydrology","fa-cloud-sun"],
-  ["trade","Trade & Grid","fa-right-left"],
-  ["custom","Custom Variant","fa-sliders"],
+  ["overview","Overview & Visualization","fa-chart-area"],
+  ["risk","Risk & Uncertainty (Monte Carlo / Markov)","fa-shuffle"],
   ["compare","Compare & Decide","fa-table-columns"]
 ];
 
@@ -594,6 +595,17 @@ function renderStages(){
  nav.innerHTML=stages.map((x,i)=>`<div class="stage ${i===0?"active":""}" data-stage="${i}" onclick="goStage(${i})"><i class="fa-solid ${x[2]}"></i>${i+1}. ${x[1]}</div>`).join("");
 }
 function syncSidebarHeights(){
+ // Page-level: the persistent tree filter vs. whichever result tab is
+ // currently active in the main content column — same row-height coupling
+ // issue as below, at the top level of the layout.
+ const treeSidebar=document.querySelector(".tree-sidebar");
+ const activePanel=document.querySelector(".app-main .stage-panel.active");
+ if(treeSidebar&&activePanel){
+   const h=activePanel.offsetHeight;
+   if(h>0) treeSidebar.style.maxHeight=Math.max(280,h)+"px";
+ }
+ // Per-panel sidebar/content pairs nested inside individual tabs (Monte
+ // Carlo controls, Seasonal Adequacy shares, etc.)
  document.querySelectorAll(".side-layout, .mc-layout").forEach(layout=>{
    const sidebar=layout.querySelector(".side-sidebar, .mc-sidebar");
    const content=layout.querySelector(".side-content, .mc-results");
@@ -608,7 +620,7 @@ function syncSidebarHeights(){
 function goStage(i){
  document.querySelectorAll(".stage-panel").forEach((e,n)=>e.classList.toggle("active",n===i));
  document.querySelectorAll(".stage").forEach((e,n)=>e.classList.toggle("active",n===i));
- if(i===5)renderComparison();
+ renderComparison();
  requestAnimationFrame(syncSidebarHeights);
 }
 
@@ -753,6 +765,32 @@ function renderTargetDiagnosis(){
  }
 
  host.innerHTML=items.map(it=>`<div class="diagnosis-item ${it.ok?"ok":""}"><div class="issue"><i class="fa-solid ${it.ok?"fa-circle-check":"fa-triangle-exclamation"}"></i> ${it.issue}</div>${it.options.length?`<ul>${it.options.map(o=>`<li>${o}</li>`).join("")}</ul>`:""}</div>`).join("");
+}
+// ── Seasonal (wet/dry) adequacy check ───────────────────────────────────
+// The annual model above can show an adequate reserve margin while masking
+// a real dry-season shortfall — Nepal's hydro fleet is heavily monsoon-
+// dependent, so splitting the SAME annual generation/demand totals by
+// season (using editable reasoned shares, pending real monthly/hourly
+// data) surfaces the constraint that actually bites in practice.
+function renderSeasonalAdequacy(){
+ const host=document.getElementById("seasonalAdequacy");
+ if(!host||!BASELINE)return;
+ const a=active(), y=targetYear, r=scenarioAt(a,y);
+ const wetGenPct=+document.getElementById("wetGenShare").value;
+ const wetDemPct=+document.getElementById("wetDemandShare").value;
+ const wetGen=r.availableGeneration*wetGenPct/100, dryGen=r.availableGeneration*(1-wetGenPct/100);
+ const wetDem=r.domesticEnergyDemand*wetDemPct/100, dryDem=r.domesticEnergyDemand*(1-wetDemPct/100);
+ const wetMargin=wetDem>0?(wetGen-wetDem)/wetDem*100:0;
+ const dryMargin=dryDem>0?(dryGen-dryDem)/dryDem*100:0;
+ const annualMargin=r.domesticEnergyDemand>0?(r.availableGeneration-r.domesticEnergyDemand)/r.domesticEnergyDemand*100:0;
+ const dryDeficitGWh=Math.max(0,dryDem-dryGen);
+ const cards=[
+  ["Annual Reserve Margin",fmt(annualMargin,1)+"%","full-year aggregate, at "+y],
+  ["Wet-Season (Jun–Nov) Margin",fmt(wetMargin,1)+"%",fmt(wetGen)+" GWh gen vs "+fmt(wetDem)+" GWh demand"],
+  ["Dry-Season (Dec–May) Margin",fmt(dryMargin,1)+"%",fmt(dryGen)+" GWh gen vs "+fmt(dryDem)+" GWh demand"],
+  ["Implied Dry-Season Shortfall",fmt(dryDeficitGWh)+" GWh",dryDeficitGWh>0.5?"not visible in the annual figure above":"none at these shares"]
+ ];
+ host.innerHTML=cards.map(([label,val,sub])=>`<div class="kpi"><small>${label}</small><strong>${val}</strong><em>${sub}</em></div>`).join("");
 }
 function renderHydro(){
  const a=active(), start=+BASELINE.latestYear||2025;
@@ -1652,7 +1690,7 @@ function renderSummary(){
 }
 function renderAll(){
  clearError();
- renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("lossControls",controlDefs.loss);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("customControls",controlDefs.custom);renderControls("macroControls",controlDefs.macro);renderMacroContext();renderTradeSnapshot();renderTargetDiagnosis();
+ renderVariants();renderControls("demandControls",controlDefs.demand);renderControls("generationControls",controlDefs.generation);renderControls("lossControls",controlDefs.loss);renderControls("hydroControls",controlDefs.hydro);renderControls("tradeControls",controlDefs.trade);renderControls("gridControls",controlDefs.grid);renderControls("macroControls",controlDefs.macro);renderMacroContext();renderTradeSnapshot();renderTargetDiagnosis();renderSeasonalAdequacy();
  renderHydro();renderHorizon();renderYearScrubber();renderSummary();renderKpis();renderAdequacy();renderCharts();renderComparison();
  renderRecommendation();renderTornado();renderWeightControls();renderExpectedValue();
  renderMixControls();renderSankey();renderWaterfall();renderRadar();renderStackedArea();
