@@ -52,6 +52,10 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 .tree-section .tree-body{padding:12px}
 .app-main{min-width:0}
 .tree-top-block{background:#fff;border:1px solid #e3e9f2;border-radius:10px;padding:12px}
+.macro-preset-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.macro-preset-row button{padding:7px 4px;font-size:11px;border-radius:7px;border:1px solid #d7e2f5;background:#f7f9fc;color:#37425a;cursor:pointer;font-weight:700}
+.macro-preset-row button:hover{background:#eaf1fc;border-color:#a9c3ec;color:#0d47a1}
+.macro-preset-row button.active{background:linear-gradient(180deg,#1a5cc4,#0d47a1);color:#fff;border-color:#0d47a1}
 .mc-sidebar,.side-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:10px;max-height:calc(100vh - 30px);overflow-y:auto;padding-right:4px;scrollbar-width:thin}
 .mc-sidebar::-webkit-scrollbar,.side-sidebar::-webkit-scrollbar{width:6px}
 .mc-sidebar::-webkit-scrollbar-thumb,.side-sidebar::-webkit-scrollbar-thumb{background:#c7d3e6;border-radius:3px}
@@ -133,7 +137,6 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 <body>
 <div class="wrap">
   <div id="error" class="error"></div>
-  <div id="status" class="status"></div>
 
   <div class="panel">
     <h3><i class="fa-solid fa-compass"></i> Scenario Analysis — Power System Decision Support</h3>
@@ -189,6 +192,12 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
       <details class="tree-section">
         <summary>Macroeconomic Drivers</summary>
         <div class="tree-body">
+          <p class="desc" style="margin:0 0 8px;font-size:11.5px">How fast the economy grows, and how quickly EVs and electric cooking spread — these add to demand on top of your Demand slider above.</p>
+          <div class="macro-preset-row">
+            <button type="button" onclick="setMacroPreset('conservative')">Conservative</button>
+            <button type="button" onclick="setMacroPreset('baseline')">Baseline</button>
+            <button type="button" onclick="setMacroPreset('optimistic')">Optimistic</button>
+          </div>
           <div class="kpis" id="macroContext" style="margin-bottom:10px"></div>
           <div id="macroControls"></div>
           <div class="footer-note" id="macroNote" style="margin-top:8px"></div>
@@ -232,13 +241,9 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
     </div>
 
     <div class="app-main">
-      <div class="panel">
-        <div class="stage-nav" id="stageNav"></div>
-      </div>
-
   <div id="stage6" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-chart-area"></i> Stage 6 — Overview &amp; Visualization</h4>
+      <h4><i class="fa-solid fa-chart-area"></i> Overview &amp; Visualization</h4>
       <p class="desc">Full system picture for the active variant at the selected year: trajectory, adequacy, revenue, energy flow and multi-criteria comparison.</p>
     </div>
     <div class="kpis" id="kpis"></div>
@@ -321,7 +326,7 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 
   <div id="stage7" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-shuffle"></i> Stage 7 — Risk &amp; Uncertainty (Monte Carlo / Markov Chain)</h4>
+      <h4><i class="fa-solid fa-shuffle"></i> Risk &amp; Uncertainty (Monte Carlo / Markov Chain)</h4>
       <p class="desc">Three complementary uncertainty-quantification tools: one-at-a-time sensitivity, probability-weighted scenario planning, and full stochastic simulation via Monte Carlo or Markov-chain methods — standard practice in modern capacity-expansion and energy-transition risk analysis.</p>
     </div>
     <div class="grid">
@@ -377,7 +382,7 @@ button:hover{filter:brightness(.97)}button.primary{background:#0d47a1;color:whit
 
   <div id="stage8" class="stage-panel">
     <div class="panel">
-      <h4><i class="fa-solid fa-table-columns"></i> Stage 8 — Compare &amp; Decide</h4>
+      <h4><i class="fa-solid fa-table-columns"></i> Compare &amp; Decide</h4>
       <p class="desc">Compare all enabled variants at the selected target year and identify the strongest candidate.</p>
       <div class="variant-toolbar">
         <button onclick="exportComparisonCsv()"><i class="fa-solid fa-file-csv"></i> Export Comparison (CSV)</button>
@@ -592,7 +597,7 @@ function toggleScenario(id){
 
 function renderStages(){
  const nav=document.getElementById("stageNav");
- nav.innerHTML=stages.map((x,i)=>`<div class="stage ${i===0?"active":""}" data-stage="${i}" onclick="goStage(${i})"><i class="fa-solid ${x[2]}"></i>${i+1}. ${x[1]}</div>`).join("");
+ nav.innerHTML=stages.map((x,i)=>`<div class="stage ${i===0?"active":""}" data-stage="${i}" onclick="goStage(${i})"><i class="fa-solid ${x[2]}"></i>${x[1]}</div>`).join("");
 }
 function syncSidebarHeights(){
  // Page-level: the persistent tree filter vs. whichever result tab is
@@ -651,7 +656,7 @@ const controlDefs={
  trade:[["exportPrice","Export price","NPR/kWh",3,10,.25],["importPrice","Import price","NPR/kWh",6,16,.25],["indiaAbsorption","India export absorption","%",0,100,5]],
  grid:[["evacCapacity","Cross-border evacuation capacity","MW",300,5000,50],["evacUtil","Evacuation line utilization","%",30,95,5],["substationCapacity","Domestic grid/substation capacity","MW",1500,9000,100]],
  loss:[["systemLossPct","System (T&D) loss — current","%",3,30,.1],["lossImprovement","Annual loss reduction","pp/yr",-1,2,.05],["consumerGrowth","Consumer (connections) growth","%/yr",1,15,.25]],
- macro:[["gdpGrowth","GDP growth rate","%/yr",0,15,.1],["gdpElasticity","GDP → demand elasticity","x",0.3,2,.05],["evAdoptionGrowth","EV charging load growth","%/yr",0,80,1],["inductionGrowth","Electric cooking (induction) penetration growth","pp/yr",0,25,.5]],
+ macro:[["gdpGrowth","GDP growth rate","%/yr",0,15,.5],["gdpElasticity","GDP → demand sensitivity","x",0.3,2,.1],["evAdoptionGrowth","EV charging load growth","%/yr",0,80,2],["inductionGrowth","Electric cooking (induction) growth","pp/yr",0,25,1]],
  custom:[["demandGrowth","Annual demand growth","%/yr",3,15,.5],["capacityGrowth","Generation growth","%/yr",2,20,.5],["hydrology","Hydrology shock","%",-25,15,1],["domesticTariff","Domestic tariff","NPR/kWh",7,14,.25],["exportPrice","Export price","NPR/kWh",3,10,.25],["importPrice","Import price","NPR/kWh",6,16,.25],["evacCapacity","Evacuation capacity","MW",300,5000,50],["evacUtil","Evacuation utilization","%",30,95,5],["indiaAbsorption","India export absorption","%",0,100,5],["substationCapacity","Grid capacity","MW",1500,9000,100],["systemLossPct","System (T&D) loss — current","%",3,30,.1],["lossImprovement","Annual loss reduction","pp/yr",-1,2,.05],["consumerGrowth","Consumer growth","%/yr",1,15,.25],["gdpGrowth","GDP growth rate","%/yr",0,15,.1],["gdpElasticity","GDP → demand elasticity","x",0.3,2,.05],["evAdoptionGrowth","EV charging load growth","%/yr",0,80,1],["inductionGrowth","Induction-cooking penetration growth","pp/yr",0,25,.5]]
 };
 function toggleParamLock(key,included){
@@ -669,6 +674,21 @@ function renderControls(hostId,defs){
    const isLocked=!!locked[d[0]];
    return `<div class="field ${isLocked?"field-locked":""}"><label><span class="field-name"><input type="checkbox" class="field-toggle" ${isLocked?"":"checked"} onchange="toggleParamLock('${d[0]}',this.checked)" title="Include this driver in the analysis (uncheck to hold at baseline default)">${d[1]}</span><span id="v-${d[0]}">${fmt(a.params[d[0]],d[5]<1?1:0)} ${d[2]}</span></label><input type="range" min="${d[3]}" max="${d[4]}" step="${d[5]}" value="${a.params[d[0]]}" oninput="setParam('${d[0]}',this.value)" ${isLocked?"disabled":""}></div>`;
  }).join("");
+}
+function setMacroPreset(level){
+ const a=active(), m=(BASELINE&&BASELINE.macro)||{};
+ const gdpBase=Number.isFinite(+m.gdpGrowthBaselinePct)?+m.gdpGrowthBaselinePct:9.1;
+ const evBase=Number.isFinite(+m.evAdoptionDefaultGrowthPct)?+m.evAdoptionDefaultGrowthPct:35;
+ const indBase=Number.isFinite(+m.inductionDefaultGrowthPpPerYr)?+m.inductionDefaultGrowthPpPerYr:14;
+ const presets={
+   conservative:{gdpGrowth:clamp(gdpBase-2.5,0,15),gdpElasticity:0.7,evAdoptionGrowth:clamp(evBase*0.6,0,80),inductionGrowth:clamp(indBase*0.6,0,25)},
+   baseline:{gdpGrowth:gdpBase,gdpElasticity:1,evAdoptionGrowth:evBase,inductionGrowth:indBase},
+   optimistic:{gdpGrowth:clamp(gdpBase+2.5,0,15),gdpElasticity:1.3,evAdoptionGrowth:clamp(evBase*1.4,0,80),inductionGrowth:clamp(indBase*1.4,0,25)}
+ };
+ const p=presets[level]||presets.baseline;
+ Object.entries(p).forEach(([k,v])=>{a.params[k]=Math.round(v*100)/100; if(a.locked)a.locked[k]=false;});
+ renderAll();
+ document.querySelectorAll(".macro-preset-row button").forEach(b=>b.classList.toggle("active",b.textContent.trim().toLowerCase()===level));
 }
 function renderMacroContext(){
  const host=document.getElementById("macroContext");
@@ -1717,7 +1737,6 @@ async function boot(){
  const start=+BASELINE.latestYear||2025;
  DATA_DEFAULTS=buildDefaults(BASELINE);
  targetYear=start+5;
- document.getElementById("status").innerHTML=`<span class="badge good">Scenario Engine Ready</span><span class="badge">Baseline FY ${start}</span><span class="badge">Target ${targetYear}</span><span class="badge">Variants ${scenarios.length||5}</span>`;
  document.getElementById("footnote").textContent=`Baseline data: FY ${start}. The model uses the dashboard's scenario-baseline endpoint where available and falls back to safe defaults if the API is unavailable. Results are screening estimates, not a substitute for detailed production-cost, hydro-energy, transmission or financial models.`;
  const restored=loadSavedSession();
  if(!restored){initScenarios();mix=buildMixDefaults(BASELINE);stackedAreaView="year";}
